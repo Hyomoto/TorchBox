@@ -1,9 +1,6 @@
-from torchbox import TorchBox, Macro, MacroLookup
-from test import Debug, Info, Warning, Error
-from canvas import Ansi
-import sys
-
-torchbox = TorchBox()
+from logger import Debug, Info, Warning, Error
+from constants import Ansi
+import os
 
 def debug(cmd):
     tokens = cmd.split()
@@ -26,25 +23,28 @@ def debug(cmd):
                 last = abs(float(token))
             except ValueError:
                 continue
-    entries = torchbox.logger.filter(level, only)
-    if last is not None:
-        entries = entries[-int(last):]
-    torchbox.write("\n".join(entries), wrap=False)
+    return last, level, only
 
 def main():
-    from scenes import intro
-    torchbox.setScene(intro.get("creation"))
+    from game import game
+    from game import environment
+    print("OKAY")
+    return
     while True:
-        torchbox.clear()
-        torchbox.render()
-        cmd = torchbox.input()
+        cmd = input(torchbox.getInput())
         if cmd == "exit":
             break
-        if cmd.startswith("debug"):
-            debug(cmd)
-            continue
-        torchbox.tokens(cmd)
-    print(Ansi.RESET)
+        elif cmd.startswith("debug"):
+            last, level, only = debug(cmd)
+            entries = torchbox.logger.filter(level, only)
+            if last is not None:
+                entries = entries[-int(last):]
+            print("\n".join(entries))
+        else:
+            output, clear = torchbox.update(cmd, environment)
+            if clear:
+                os.system('cls' if os.name == 'nt' else 'clear')
+            print(output)
 
 if __name__ == "__main__":
     main()

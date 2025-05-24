@@ -1,186 +1,83 @@
-from typing import Callable, Dict, List, Optional, Tuple, Union
-from canvas import Canvas, Ansi
-from terminal import Terminal
-from scenes import Scene, Node, NodeTextLookup, NodeInput, NodeInputChoices, NodeInputConfirm, Macro, MacroLookup, MacroList
-import scenes
-from test import Logger, Message, Debug, Info, Warning, Error
-import os
+from typing import Dict, List, Optional, Any
+from constants import Crucible, Ember, Macro
+from logger import Logger, Message, Debug, Info, Warning, Error
+from tinder import TinderBox
 import re
-
-colorTable = [
-    Ansi.RESET,
-    Ansi.BLACK,
-    Ansi.RED,
-    Ansi.GREEN,
-    Ansi.BROWN,
-    Ansi.BLUE,
-    Ansi.PURPLE,
-    Ansi.CYAN,
-    Ansi.YELLOW,
-    Ansi.WHITE,
-    Ansi.LIGHT_GRAY,
-    Ansi.LIGHT_RED,
-    Ansi.LIGHT_GREEN,
-    Ansi.LIGHT_BLUE,
-    Ansi.LIGHT_PURPLE,
-    Ansi.LIGHT_CYAN,
-    Ansi.DARK_GRAY,
-    Ansi.BOLD,
-    Ansi.FAINT,
-    Ansi.ITALIC,
-    Ansi.UNDERLINE,
-    Ansi.BLINK,
-    Ansi.NEGATIVE,
-    Ansi.CROSSED,
-]
 
 MACRO_PATTERN = re.compile(r'\[\[(.*?)\]\]')
 
-class Environment:
-    def __init__(self):
-        self.variables = {}
-        self.functions = {}
+class Sheaf:
+    pass
 
-    def set(self, var: str, value: Union[str, int, float]):
-        points = var.split('.')
-        scope = self.variables
-        while len(points) > 1:
-            point = points.pop(0)
-            if point not in scope:
-                scope[point] = {}
-            scope = scope[point]
-        scope[points[0]] = value
+class TorchBox():
+    name: str
+    macros: Crucible
+    scenes: Dict[str, TinderBox]
+    logger: Logger
+    line: str
+    scene: str
+    def __init__(self, name: str, macros = None, errorLevel = Debug, first: str = "start"):
+        self.name = name
+        self.macros = macros or Crucible()
+        self.logger = Logger(errorLevel)
+        self.scenes = {}
+        self.messages = []
 
-    def get(self, var: str) -> Union[str, int, float]:
-        points = var.split('.')
-        scope = self.variables
-        while len(points) > 1:
-            point = points.pop(0)
-            if point not in scope:
-                raise ValueError(f"Variable '{var}' not found.")
-            scope = scope[point]
-        return scope.get(points[0], None)
+    def __getitem__(self, name: str) -> TinderBox:
+        """Get a scene by name."""
+        if name in self.scenes:
+            return self.scenes[name]
+        raise ValueError(f"TinderBox '{name}' not found.")
 
-    def call(self, func: str, *args):
-        if func in self.functions:
-            return self.functions[func](*args)
-        raise ValueError(f"Function '{func}' not found.")
+    def __setitem__(self, name, scene: TinderBox):
+        self.add(name, scene)
 
-
-class TorchBox:
-    scene: Scene
-    node: Node
-    def __init__(self, width: int = 60, height: int = 24):
-        self.canvas = Canvas(width, height)
-        self.terminal = Terminal(width, height)
-        self.scene = None # type: ignore
-        self.node = None # type: ignore
-        self.environment = Environment()
-        self.macros = MacroList()
-        self.logger = Logger(Debug)
+    def update(self, cmd: str, env: Crucible):
+        """Send input to the scene graph and return the output.
+        Returns:
+            tuple(output, clear)
+            * output- the output string from the scene graph
+            * clear - whether the scene requested a clear
+        """
+        self.logger.clear()
+        try:
+            output = "PLACEHOLDER"
+            logs = []
+        except Ember as e:
+            raise Ember(f"{env.get('SCENE')} -> {e}")
+        # push scene graph logs to the logger
+        for log in logs:
+            log(log)
+        # return the scene graph output
+        env.set("OUTPUT", self.substitute(env.get("OUTPUT")))
 
     def log(self, message: Message):
-        message.text = f"{self.scene if self.scene else 'Scene(None)'}:{self.node if self.node else 'None'} -> {message.text}"
+        message.text = f"{self.scene} -> {message.text}"
         self.logger.log(message)
+        if isinstance(message, Error):
+            raise Ember(message.text)
 
-    def write(self, text: str, wrap = True):
-        if self.getMode() == self.terminal and not wrap:
-            self.terminal.writer(text)
-        else:
-            self.getMode().write(text)
-
-    def substitute(self, text: str, stack = None):
+    def substitute(self, text: str, env: Crucible, stack = None):
         if stack is None:
             stack = []
         for match in reversed(list(MACRO_PATTERN.finditer(text))):
             macro = match.group(1)
             if macro in stack:
-                self.log(Warning(f"Recursinve'{macro}' {stack}. Aborting."))
                 continue
-            sub = self.getMacro(macro)
+            sub: Macro | str | None = self.macros.get(macro)
             if sub:
-                if isinstance(sub, MacroLookup):
-                    try:
-                        replace = self.environment.get(sub.replace)
-                    except ValueError as _:
-                        self.log(Warning(f"Lookup '{sub.replace}' from '{macro}' not found in environment."))
-                        continue
-                    replace = str(replace)
-                else:
-                    replace = sub.replace
-                replace = self.substitute(replace, stack + [macro])
+                replace = sub
+                if isinstance(sub, Macro) and sub.replace in env:
+                    replace = str(env.get(sub.replace))
+                replace = self.substitute(replace, env, stack + [macro])
                 text = text[:match.start()] + replace + text[match.end():]
-            else:
-                self.log(Warning(f"Macro '{macro}' not found."))
         return text
 
-    def getMode(self):
-        return self.terminal if isinstance(self.scene, Scene) else self.canvas
+    def add(self, name: str, scene: TinderBox):
+        self.scenes[name] = scene
+        return self
 
-    def getMacro(self, pattern: str):
-        result = None
-        if self.scene:
-            result = self.scene.getMacro(pattern)
-        if not result:
-            result = self.macros.get(pattern)
-        return result
-
-    def setScene(self, scene: Scene):
-        self.log(Debug(f"Setting scene {scene}"))
-        self.getMode().clear()
-        self.scene = scene
-        if not scene.first:
-            return
-        self.setNode(scene.first)
-
-    def setNode(self, node: Node):
-        self.log(Debug(f"Setting node {node}"))
-        self.node = node
-        if isinstance(node.text, NodeTextLookup):
-            text = node.text.get(self.environment.get(node.text.var))
-        else:
-            text = node.text
-        self.write(self.substitute(str(text)))
-
-    def tokens(self, cmd: str):
-        input = self.node.input
-
-        if self.getMode() == self.terminal:
-            self.write(self.substitute(f"{input.text}{cmd}"))
-
-        tokens = input.getInput(cmd)
-        first = tokens[0]
-        
-        match input.__class__:
-            case scenes.NodeInput:
-                if not cmd:
-                    return
-                if input.var:
-                    self.environment.set(input.var, first)
-                self.setNode(self.scene.get(input.goto))
-            case scenes.NodeInputChoices:
-                if not cmd:
-                    return
-                for choice in input.choices: # type: ignore
-                    if first in choice.keys:
-                        self.log(Debug(f"Choice '{first}' found in {choice.keys}"))
-                        if choice.call:
-                            result = choice.call(choice.keys[0])
-                        else:
-                            result = choice.keys[0]
-                        if input.var:
-                            self.environment.set(input.var, result)
-                        # add call eventually
-                        goto = choice.goto if choice.goto else input.goto
-                        self.setNode(self.scene.get(goto))
-            case scenes.NodeInputConfirm:
-                self.setNode(self.scene.get(input.goto))
-
-    def input(self):
-        return input(self.substitute(self.node.input.text))
-
-    def clear(self):
-        os.system('cls' if os.name == 'nt' else 'clear')
-
-    def render(self):
-        print(self.getMode().render())
+    def get(self, name: str):
+        if name in self.scenes:
+            return self.scenes[name]
+        raise ValueError(f"TinderBox '{name}' not found.")
