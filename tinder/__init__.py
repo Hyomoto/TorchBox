@@ -1,31 +1,29 @@
 """
-tinder.py
-=========
-TinderBox is a minimalist scripting engine providing deterministic, extensible
+Tinder is a minimalist scripting language builder providing deterministic, extensible
 logic for interactive scenes or nodes in Python applications.
-
-Author: Devon "Hyomoto" Mullane, 2025
 
 Overview:
 ---------
-TinderBox defines a small, declarative language designed for ease of parsing,
-customization, and rapid iteration. Its core features:
-  - A compact, extensible instruction set ("kindling") for assignment, flow control,
-    arithmetic, branching, and I/O.
+Defines a small, declarative language builder designed for ease of parsing, customization,
+and rapid iteration. Its core features:
+  - A built-in compact, extensible instruction set ("kindlings") for assignment, flow
+    control, arithmetic, branching, and I/O.
+  - A flexible Firestarter class for easily defining the language syntax and
+    compiling scripts into executable Tinder instruction trees.
   - Dynamic registration and macro redefinition of commands and argument patterns.
   - Seamless integration with arbitrary data environments via the Crucible class,
     supporting protected, global, and local scopes for variable management.
 
-TinderBox itself is unopinionated about how game or application state is structured.
-The user (or host engine) defines what variables exist, how memory maps are arranged,
-and what conventions—if any—are imposed on input, output, or control flow. Patterns
-and macros can be freely redefined to fit any domain, and the shape of the environment
-remains the implementer's choice.
+A Tinder is itself unopinionated about how game or application state is structured.  The
+scripts operate directly on a Crucible, meaning the user (or host engine) defines what
+variables exist, how memory maps are arranged, and what conventions—if any—are imposed on
+input, output, or control flow. Patterns and macros can be freely redefined to fit a
+domain because the shape of the environment is the implementer's choice.
 
 Typical Usage:
 --------------
 - Register a core or custom command set with desired syntax and argument rules.
-- Compile source scripts to TinderBox instruction trees.
+- Compile source scripts to Tinder instruction trees using the Firestarter class.
 - At runtime, pass a Crucible (or stack of Crucibles) as the execution environment.
 - Scripts operate directly on the Crucible, serving as the interface for all input and output
   between the script and host application.
@@ -79,24 +77,35 @@ Notes
  Macro definitions and .ARG patterns enable reusable or aliased commands (e.g., always writing to OUTPUT).
  Nil is valid for slurp or optional args, ensuring safe pattern matching and termination of argument lists.
  Sub-operations allow basic composition; nesting is supported where grammar allows.
+
+Author: Devon "Hyomoto" Mullane, 2025
+
+License: MIT License
 """
-from typing import List, Any
-from constants import Crucible
+from typing import Type, List, Any
+from firestarter.crucible import Crucible
 from abc import ABC, abstractmethod
+from firestarter import Firestarter, Grammar, Lexeme, Value, Primitive
 import re
 
 # exceptions
 
+class TinderBurn(Exception):
+    """Thrown when a Tinder fails to compile."""
+    pass
+
+# flow control
+
 class Yield(Exception):
     """
-    Used by tinderboxes to yield control back to the torchbox.
+    Used by Tinders to yield control.
     """
     def __str__(self):
         return "Yield()"
 
 class JumpTo(Yield):
     """
-    Used by the TinderBox to jump to a new line.
+    Used by the Tinders to jump to a new line.
     """
     def __init__(self, line: int):
         super().__init__()
@@ -104,16 +113,25 @@ class JumpTo(Yield):
     def __str__(self):
         return f"JumpTo({self.line})"
 
-class TinderBurn(Exception):
-    """Thrown when a Tinder script fails to compile."""
-    pass
+# primitives
+
+class String(Primitive):
+    """A string value."""
+    @property
+    def primitive(self) -> Type[str]:
+        return str
+    def __repr__(self):
+        return f"String({self.var})"
+
+class Number(Primitive):
+    """A number value."""
+    @property
+    def primitive(self) -> Type[str]:
+        return float
+    def __repr__(self):
+        return f"Number({self.var})"
 
 # values
-
-class Value(ABC):
-    @abstractmethod
-    def get(self, env: Crucible) -> Any:
-        pass
 
 class Lookup(Value):
     """A lookup retrieves a variable from the environment."""
@@ -134,32 +152,23 @@ class Redirect(Lookup):
     def __repr__(self):
         return f"Redirect({self.var})"
 
-class String(Value):
-    """A string value."""
-    def __init__(self, var: str):
-        self.var = str(var)
-    def get(self, env: Crucible):
-        return self.var
-    def __repr__(self):
-        return f"String({self.var})"
-
-class Number(Value):
-    """A number value."""
-    def __init__(self, var: float):
-        self.var = float(var)
-    def get(self, env: Crucible):
-        return self.var
-    def __repr__(self):
-        return f"Number({self.var})"
-
 class Group(Value):
     """A group of values that can be retrieved as a list."""
-    def __init__(self, items: list):
+    def __init__(self, *items: Any):
         self.list = items
+    def __getitem__(self, index: int):
+        return self.list[index] if index < len(self.list) else None
+    def __setitem__(self, index: int, value: Value):
+        if index < len(self.list):
+            self.list[index] = value
+        else:
+            raise IndexError("Index out of range for Group.")
     def get(self, env: Crucible):
         return [item.get(env) for item in self.list]
     def __repr__(self):
         return f"Group({self.list})"
+
+# kindling operations
 
 class Kindling(Value, ABC):
     """Base class for all kindling operations."""
@@ -168,6 +177,16 @@ class Kindling(Value, ABC):
     @abstractmethod
     def get(self, env: Crucible) -> Any | None:
         pass
+
+class From(Kindling):
+    """A kindling that retrieves a value from a list."""
+    def __init__(self, var: Value, index: Value):
+        self.var = str(var.var)
+        self.index = index
+    def get(self, env: Crucible):
+        return env.get(self.var)[self.index.get(env)]
+    def __repr__(self):
+        return f"From({self.var})"
 
 # set
 
@@ -183,11 +202,12 @@ class Set(Kindling):
 
 class Write(Kindling):
     """Writes a string to a variable in the environment."""
-    def __init__(self, var: Value, text: Value):
+    def __init__(self, var: Value, text: Value, newline: Value = None):
         self.var = str(var.var)
         self.text = text
+        self.newline = newline or Number(1)  # Optional newline condition
     def get(self, env: Crucible):
-        env.set(self.var, env.get(self.var) + self.text.get(env) + "\n")
+        env.set(self.var, env.get(self.var) + self.text.get(env) + "\n" if self.newline.get(env) else "")
     def __repr__(self):
         return f"Write({self.var}, {self.text})"
 
@@ -198,7 +218,7 @@ class Input(Kindling):
         self.prompt = prompt
     def get(self, env: Crucible):
         env.set(self.var,self.prompt.get(env))
-        raise Yield() # causes a yield
+        raise Yield()
     def __repr__(self):
         return f"Input({self.var}, {self.prompt})"
 
@@ -208,16 +228,17 @@ class Comparison(Kindling):
     pass
 
 class In(Comparison):
-    """Checks if a value is in a list of values."""
+    """Returns the value if it is in the list, or None."""
     def __init__(self, value: Value, *ops: Value):
         self.value = value
         self.ops = ops
     def get(self, env: Crucible):
         compare = self.value.get(env)
         for op in self.ops:
-            if op.get(env) == compare:
-                return True
-        return False
+            result = op.get(env)
+            if result == compare:
+                return result
+        return None
     def __repr__(self):
         return f"In({self.value}, {self.ops})"
 
@@ -234,14 +255,15 @@ class And(Comparison):
         return f"And({self.ops})"
 
 class Or(Comparison):
-    """Checks if any value is true."""
+    """Returns the first value that is Truthy, or None."""
     def __init__(self, *ops: Value):
         self.ops = ops
     def get(self, env: Crucible):
         for op in self.ops:
+            result = op.get(env)
             if op.get(env):
-                return True
-        return False
+                return result
+        return None
     def __repr__(self):
         return f"Or({self.ops})"
 
@@ -338,8 +360,15 @@ class Call(Kindling):
 
 # control flow
 
-class Goto(Kindling):
-    """A Goto instruction that sets a variable to a line number."""
+class NoOp(Kindling):
+    """A no-operation instruction that does nothing."""
+    def get(self, env: Crucible):
+        pass
+    def __repr__(self):
+        return "NoOp()"
+
+class Goto(NoOp):
+    """A no-operation instruction used to flag line numbers by name."""
     def __init__(self, scene: Value):
         self.var = scene.var
     def get(self, env: Crucible):
@@ -348,7 +377,7 @@ class Goto(Kindling):
         return f"Goto({self.var})"
 
 class Stop(Kindling):
-    """Stops the execution of the TinderBox."""
+    """Stops the execution of the Tinder."""
     def get(self, env: Crucible):
         raise Yield() # causes a yield
     def __repr__(self):
@@ -357,26 +386,25 @@ class Stop(Kindling):
 class Jump(Kindling):
     """Jumps to a line number based on a condition."""
     def __init__(self, goto: Lookup | Number, condition: Comparison | Value | None = None):
-        self.goto = goto
+        self.goto = Lookup(goto.var) if isinstance(goto, String) else goto
         self.condition = condition
     def get(self, env: Crucible):
-        goto = Lookup(self.goto.var) if isinstance(self.goto, String) else self.goto
         if self.condition is None:
-            raise JumpTo(goto.get(env))
+            raise JumpTo(self.goto.get(env))
         elif self.condition.get(env):
-            raise JumpTo(goto.get(env))
+            raise JumpTo(self.goto.get(env))
     def __repr__(self):
         return f"Jump({self.goto}, {self.condition})"
 
-# TinderBox
+# Tinder
 
-class TinderBox:
+class Tinder:
     """
     A collection of Kindling instructions that can be executed.  Returns
     the next line of execution or raises an exception if an error occurs.
     """
     instructions: List[Kindling]
-    def __init__(self, instructions: List[Kindling] = []):
+    def __init__(self, *instructions: Kindling ):
         self.instructions = instructions
     def __setitem__(self, index: int, instruction: Kindling):
         self.instructions[index] = instruction
@@ -385,7 +413,13 @@ class TinderBox:
     def __len__(self) -> int:
         return len(self.instructions)
     def __repr__(self) -> str:
-        return f"TinderBox[{len(self)} lines](\n\t{'\n\t'.join(repr(inst) for inst in self.instructions)}\n)"
+        return f"Tinder[{len(self)} lines](\n\t{'\n\t'.join(repr(inst) for inst in self.instructions)}\n)"
+    def getJumpTable(self) -> dict[str, int]:
+        """
+        Returns a dictionary mapping Goto labels to their line numbers.
+        This is useful for resolving jumps by name.
+        """
+        return {inst.var: i for i, inst in enumerate(self.instructions) if isinstance(inst, Goto)}
     def run(self, line: int, env: Crucible):
         while line < len(self.instructions):
             try:
@@ -400,182 +434,111 @@ class TinderBox:
                 raise TinderBurn(f"Error at line {line+1}: {e}") from e
         return line
 
-TOKEN_RE = re.compile(
-    r'(\"(?:[^\"\\]|\\.)*\")'   # Double-quoted string
-    r'|(`[^`]+`)'               # Backtick sub-command (non-nested)
-    r'|([^\s]+)'                # Plain token
-)
-TOKEN_LS = re.compile(r'\s*("(?:[^"\\]|\\.)*"|[^,\s\[\]]+)\s*(,|$)')
 
+class Comment(Lexeme):
+    """Base class for comments."""
+    @property
+    def value(self) -> str:
+        """Return the comment text."""
+        return self.text
 
-class Tinder:
-    """
-    Tinder
-    ======
-    The Tinder class defines the domain-specific language used by TinderBox.
-    It provides a concise API for registering keywords, argument patterns,
-    and macro overrides, allowing users to extend or redefine language syntax
-    and semantics as needed.
+class Number(Lexeme):
+    @property
+    def value(self) -> int:
+        """Return the numeric value of the lexeme."""
+        return int(self.text)
 
-    Primary responsibilities:
-    - Register and redefine language keywords and argument patterns.
-    - Support macros for custom command behaviors or aliasing.
-    - Compile textual scripts into TinderBox instruction trees for execution.
-    - Optionally prepare local environments (e.g., for GOTO lookups) to support script navigation.
-    """
-    def __init__(self):
-        self.kindling = {}
-        
-    def register(self, keyword, pattern, kindling: Kindling):
-        """Register a keyword with a pattern and its corresponding kindling operation."""
-        self.kindling[keyword] = (pattern.split(), kindling)
-        return self
+class String(Lexeme):
+    @property
+    def value(self) -> str:
+        """Return the string value of the lexeme."""
+        return self.text[1:-1]  # Remove quotes
+
+class Identifier(Lexeme):
+    @property
+    def value(self) -> str:
+        """Return the identifier value."""
+        return self.text
+
+class Function(Lexeme):
+    @property
+    def value(self) -> str:
+        """Return the function name without the backtick."""
+        return self.text[1:]  # Remove the leading backtick
     
-    def macro(self, keyword, macro, pattern = None):
-        """
-        Create an alias for a registered keyword, optionally overriding its pattern. This allows
-        a command to be accessed under a different name, or with a custom argument pattern.
-        """
-        if keyword not in self.kindling:
-            raise TinderBurn(f"Keyword '{keyword}' not registered.")
-        self.kindling[macro] = (pattern.split() if pattern else self.kindling[keyword][0], self.kindling[keyword][1])
-        return self
+class Redirect(Lexeme):
+    @property
+    def value(self) -> str:
+        """Return the redirection identifier without the '@'."""
+        return self.text[1:]  # Remove the leading '@'
 
-    def makeLocalEnvironment(self, tinderbox: TinderBox, env: Crucible):
-        local = Crucible(parent=env)
-        for i, op in enumerate(tinderbox.instructions):
-            if isinstance(op, Goto):
-                local.set(op.var, i)
-        return local
+class Nil(Lexeme):
+    @property
+    def value(self) -> None:
+        """Return None for the nil lexeme."""
+        return None
 
-    def compile(self, script) -> TinderBox:
-        def error(self, line, message):
-            """Record an error message with the line number."""
-            nonlocal errors
-            errors.append(f"Line {line}: {message}")
+NUMBER_RE = re.compile(r'-?(?:\d+(\.\d*)?|\.\d+)')  # Matches floats, including negative numbers
+REDIRECT_RE = re.compile(r'@([a-zA-Z_][a-zA-Z0-9_]*)')  # Matches redirection identifiers starting with '@'
+FUNC_RE = re.compile(r'`[a-zA-Z_][a-zA-Z0-9_]*')  # Matches function names starting with a backtick
+NIL_RE = re.compile(r'Nil')  # Matches the keyword 'nil'
+#LINE_COMMENT_RE = re.compile(r'//[^\r\n]*')
+#BLOCK_COMMENT_RE = re.compile(r'/\*.*?\*/', re.DOTALL)
+STRING_RE = re.compile(r'(".*"|\'[^\']*\')')  # Matches double or single quoted strings
+IDENTI_RE = re.compile(r'[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*')  # Matches identifiers
 
-        def make_redirect(value: str):
-            if value.startswith('@'):
-                return Redirect(value[1:])
-            return make_number(value)
-        
-        def make_number(value: str):
-            try:
-                return Number(float(value))
-            except ValueError:
-                return make_string(value)
+grammar = Grammar(IGNORE_WHITESPACE)
+grammar.register(String, match=[STRING_RE])
+grammar.register(Number, match=[NUMBER_RE])
+grammar.register(Identifier, "Keyword", match=["call", "write", "set", "input", "jump", "#", "stop"])
+grammar.register(Identifier, match=[IDENTI_RE])
+grammar.register(Function, match=["call", "add", "subtract", "max", "min", "less", "greater", "equal", "and", "or", "not", "if", "in"])
+grammar.register(Redirect, match=[REDIRECT_RE])
+#grammar.register(Comment, match=[LINE_COMMENT_RE, BLOCK_COMMENT_RE])
+grammar.register(Number, match=["True", "False"], sub = [1, 0]) # Treat True as 1 and False as 0
+grammar.register(Nil, match=["Nil"], sub=[None])  # Treat Nil as None
 
-        def make_string(value: str):
-            if value.startswith('"'):
-                if not value.endswith('"'):
-                    raise TinderBurn(f"Unmatched quote in '{value}'")
-                return String(value[1:-1])
-            return Lookup(value)
 
-        def process_token(index: int, tokens: list[str]):
-            keyword = tokens[index]
-            if keyword.startswith("`"):
-                keyword = keyword[1:]
-            values: List[Value] = []
+# this is all super ungraceful, ugly development stuff
+# get the Tinder grammar
+tinder = Firestarter(grammar)
+# register discardable expressions
+tinder.register(Tinder)
 
-            if keyword not in self.kindling:
-                raise TinderBurn(f"Unknown keyword '{tokens[index]}'")
+tinder.register(Call)
+tinder.register(Write)
+tinder.register(Input)
+tinder.register(Set)
 
-            pattern, kindling = self.kindling[keyword]
-            for key in pattern:
-                index += 1
-                if key.startswith("%"):
-                    if key == "%..":
-                        for t in range(index, len(tokens)):
-                            if tokens[t] == "Nil":
-                                break
-                            values.append(make_redirect(tokens[t]))
-                        break
+tinder.register(Jump)
+tinder.register(Goto)
+tinder.register(Stop)
 
-                    optional = key[1] == "?"
-                    type = key[2] if optional else key[1]
+tinder.register(Add)
+tinder.register(Subtract)
+tinder.register(Min)
+tinder.register(Max)
+tinder.register(From)
 
-                    if index >= len(tokens): # run out of tokens
-                        if optional:
-                            values.append(None)
-                            continue
-                        else:
-                            raise TinderBurn(f"{keyword} expects '{key}' but got end of line.")
+tinder.register(Less)
+tinder.register(Greater)
+tinder.register(In)
+tinder.register(And)
+tinder.register(Or)
+tinder.register(Not)
 
-                    if tokens[index] == "Nil":
-                        values.append(None)
-                        continue
+tinder.register(Lookup)
+tinder.register(Redirect)
+tinder.register(String)
+tinder.register(Number)
 
-                    if tokens[index].startswith("`"): # operation
-                        try:
-                            value, index = process_token(index, tokens)
-                        except TinderBurn as e:
-                            raise TinderBurn(f"{keyword} expects '{key}' but got: {e}")
-                        values.append(value)
-                    else:
-                        match type:
-                            case "s":
-                                values.append(make_redirect(tokens[index]))
-                                if isinstance(values[-1], Number):
-                                    raise TinderBurn(f"{keyword} expected a string but got a number: {tokens[index]}")
+tinder.macro(Call, "function")
+tinder.macro(Number, "True", Number(1))
+tinder.macro(Number, "False", Number(0))
+tinder.macro(Write, None, ". .", Number(1))  # alias write with newline
+tinder.discard("ws", "ws?")
 
-                            case "n":
-                                values.append(make_redirect(tokens[index]))
-                                if isinstance(values[-1], String):
-                                    raise TinderBurn(f"{keyword} expected a number but got a string: {tokens[index]}")
+with open("./scripts/login.tinder", "r") as f:
+    script = f.read()
 
-                            case ".":
-                                values.append(make_redirect(tokens[index]))
-                            case _:
-                                raise TinderBurn(f"Unknown type '{type}' in '{key}'")
-                elif key.startswith("."):
-                    value = key[1:]
-                    if value.startswith('"'):
-                        values.append(make_string(value))
-                    else:
-                        values.append(make_number(value))
-                    index -= 1
-                else:
-                    if tokens[index] != key:
-                        raise TinderBurn(line, f"{keyword} expected '{key}' but got '{tokens[index]}'")
-            try:
-                return kindling(*values), index
-            except TypeError as e:
-                raise TinderBurn(f"{keyword} expected {repr(pattern)} arguments but got {repr(values)}") from e
-            
-        errors = []
-        output = TinderBox()
-        for i, line in enumerate(script.splitlines()):
-            tokens = [t for group in TOKEN_RE.findall(line) for t in group if t]
-            try:
-                operation, index = process_token(0, tokens)
-            except TinderBurn as e:
-                error(i+1, str(e))
-                continue
-            output.instructions.append(operation)
-        if errors:
-            raise TinderBurn("Failed to compile script:\n" + "\n".join(errors))
-        return output
-
-tinder = Tinder()
-tinder.register("write", "%s %s", Write)
-tinder.register("input", "%s %s", Input)
-tinder.register("set", "%s %.", Set)
-
-tinder.register("add", "%. %. %?.", Add)
-tinder.register("subtract", "%. %. %?.", Subtract)
-tinder.register("max", "%..", Max)
-tinder.register("min", "%..", Min)
-tinder.register("less", "%. %.", Less)
-tinder.register("greater", "%. %.", Greater)
-tinder.register("in", "%s %..", In)
-
-tinder.register("and", "%..", And)
-tinder.register("or", "%..", Or)
-tinder.register("not", "%.", Not)
-
-tinder.register("jump", "%s %?.", Jump)
-tinder.register("#", "%s", Goto)
-tinder.register("stop", "", Stop)
-
-tinder.register("call", "%s %..", Call)
+script = tinder.compile(script)

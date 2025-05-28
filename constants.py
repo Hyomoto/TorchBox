@@ -29,6 +29,30 @@ class Ansi:
     CROSSED = "\033[9m"
     RESET = "\033[0m"
 
+BLACK = Ansi.BLACK
+RED = Ansi.RED
+GREEN = Ansi.GREEN
+BROWN = Ansi.BROWN
+BLUE = Ansi.BLUE
+PURPLE = Ansi.PURPLE
+CYAN = Ansi.CYAN
+YELLOW = Ansi.YELLOW
+WHITE = Ansi.WHITE
+LIGHT_GRAY = Ansi.LIGHT_GRAY
+LIGHT_RED = Ansi.LIGHT_RED
+LIGHT_GREEN = Ansi.LIGHT_GREEN
+LIGHT_BLUE = Ansi.LIGHT_BLUE
+LIGHT_PURPLE = Ansi.LIGHT_PURPLE
+LIGHT_CYAN = Ansi.LIGHT_CYAN
+DARK_GRAY = Ansi.DARK_GRAY
+BOLD = Ansi.BOLD
+FAINT = Ansi.FAINT
+ITALIC = Ansi.ITALIC
+UNDERLINE = Ansi.UNDERLINE
+BLINK = Ansi.BLINK
+NEGATIVE = Ansi.NEGATIVE
+CROSSED = Ansi.CROSSED
+RESET = Ansi.RESET
 
 class BaseItem:
     count: int
@@ -273,83 +297,3 @@ class PercentileDice(Dice):
     def roll(self):
         rolls = [random.randint(1, self.sides) for _ in range(self.num)]
         return rolls[0] + (rolls[1] - 1) * 10
-
-
-class Macro:
-    """
-    A macro is a simple string replacement.  The terminal will replace a matched key with the macro value.
-    """
-    replace: str
-    def __init__(self, replace: str):
-        self.replace = replace
-
-
-class Crucible:
-    parent: Optional["Crucible"]
-    variables: Dict[str, Any]
-    def __init__(self, source = None, parent = None, protected = False):
-        self.variables = source or {}
-        self.parent = parent
-        self.protected = protected
-
-    def __contains__(self, var: str):
-        first = var.split(".")[0]
-        if first in self.variables:
-            return True
-        if self.parent:
-            return first in self.parent
-        return False
-    
-    def __repr__(self):
-        if self.protected:
-            return f"Crucible({self.variables}, protected, {self.parent})"
-        return f"Crucible({self.variables}, {self.parent})"
-
-    def set(self, var: str, value, protected = False):
-        if self.parent and var in self.parent:
-            if self.parent.protected:
-                raise Ember(f"Tried to write to a protected scope: '{var}'!")
-            self.parent.set(var, value, protected = True)
-            return
-        points = var.split('.')
-        scope = self.variables
-        while len(points) > 1:
-            if points[0] not in scope:
-                if protected:
-                    break # push error to outer scope
-                scope[points[0]] = {}
-            scope = scope[points[0]]
-            points.pop(0)
-        if protected:
-            if points[0] not in scope:
-                raise Ember(f"Tried to write non-existing '{var}' in protected scope.")
-            if not isinstance(value, type(scope[points[0]])):
-                raise Ember(f"Tried to mutate '{var}' from '{type(scope[points[0]])}' to {type(value)}.")
-        scope[points[0]] = value
-
-    def get(self, var: str) -> Any:
-        points = var.split('.')
-        if points[0] in self.variables:
-            scope = self.variables
-            for point in points:
-                if point not in scope:
-                    raise Ember(f"Variable '{var}' not found.")
-                scope = scope[point]
-            return scope
-        if self.parent:
-            return self.parent.get(var)
-        raise Ember(f"Variable '{var}' not found.")
-
-    def call(self, func: str, *args):
-        toCall = self.get(func)
-        if not callable(toCall):
-            raise Ember(f"Function '{func}' is not callable.")
-        return toCall(*args)
-
-
-class Ember(Exception):
-    """
-    Raised when TorchBox encounters an unrecoverable error.
-    Remember: where there's smoke, there's fire.
-    """
-    pass

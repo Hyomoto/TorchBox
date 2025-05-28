@@ -1,0 +1,22 @@
+  write OUTPUT "The battle has commenced!" True
+# get_input
+  input INPUT "What will you do? (fight, run)"
+  jump @INPUT `in INPUT "fight" "run"
+  jump invalid_input
+# fight
+  write OUTPUT "You attack!"
+  set ROLL `call random 1 10
+  jump missed_enemy `less ROLL 5
+  # hit_enemy
+    write OUTPUT "You rolled [[var:ROLL]] against 5, a hit!"
+    jump get_input
+  # missed_enemy
+    write OUTPUT "You rolled [[var:ROLL]] against 5, a miss."
+    jump get_input
+# run
+  write OUTPUT "You fled!"
+  set SCENE LAST_SCENE
+  stop
+# invalid_input
+  write OUTPUT "[[INPUT]] not a recognized command."
+  jump get_input
