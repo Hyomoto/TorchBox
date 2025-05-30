@@ -32,10 +32,10 @@ class Ansi:
     RESET = "\033[0m"
 
 class UnitTest:
-    PASS_EMOJI = f"{Ansi.GREEN}✅ {Ansi.RESET}"
-    FAIL_EMOJI = f"{Ansi.RED}❌ {Ansi.RESET}"
-    INFO_EMOJI = f"{Ansi.BLUE}ℹ️ {Ansi.RESET}"
-    WARN_EMOJI = f"{Ansi.YELLOW}⚠️ {Ansi.RESET}"
+    PASS_EMOJI = "✅ "
+    FAIL_EMOJI = "❌ "
+    INFO_EMOJI = "ℹ️  "
+    WARN_EMOJI = "⚠️ "
     def __init__(self):
         raise NotImplementedError("UnitTest is a static class and cannot be instantiated.")
 
@@ -67,11 +67,11 @@ class UnitTest:
     def test(cls, description: str, result: Any, expected: Any, verbose: bool = True, depth: int = 0):
         try:
             assert result == expected, TestException(f"returned {result} but expected {expected}")
-            cls.passed(description, verbose, depth)
-            return 0
-        except TestException as e:
+        except AssertionError as e:
             cls.failed(f"{description}{Ansi.RED} raised {e}", verbose, depth)
             return 1
+        cls.passed(description, verbose, depth)
+        return 0
     
     @classmethod
     def test_with_assertion(cls,

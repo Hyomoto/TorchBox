@@ -26,4 +26,3 @@ RegEx      <- ~'~"([^"\\]|\\.)*"'
 Identifier <- ~'[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*'
 
 Newline    <- "\r\n" / "\n" / "\r"
-ASD

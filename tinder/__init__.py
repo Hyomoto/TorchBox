@@ -83,7 +83,7 @@ Author: Devon "Hyomoto" Mullane, 2025
 License: MIT License
 """
 from typing import Type, List, Any
-from firestarter.crucible import Crucible
+from scripts.crucible import Crucible
 from abc import ABC, abstractmethod
 from firestarter import Firestarter, Grammar, Lexeme, Value, Primitive
 import re

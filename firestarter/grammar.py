@@ -1,35 +1,10 @@
 from typing import Callable, Type, Dict, Set, Tuple, List, Any
 from abc import ABC, abstractmethod
-from .crucible import Crucible
-import inspect
 import re
 
-SAFE_WHITESPACE_RE = re.compile(r'[ \t]+')  # Matches whitespace only
-
-class Lexeme:
-    pattern: re.Pattern = re.compile(r'\S+')
-    def __init__(self, text: str, line: int, column: int, override: str = None):  # type: ignore
-        self.text = text
-        self.line = line
-        self.column = column
-        self.override = override
-
-    @property
-    def value(self) -> Any:
-        """Return the value of the lexeme."""
-        return self.text
-
-    def __repr__(self):
-        return f"{self.override or self.__class__.__name__}(text={self.text!r}, line={self.line}, column={self.column})"
-
-
-class Whitespace(Lexeme):
-    pattern = re.compile(r'\s+')  # Matches whitespace only
-    @property
-    def value(self) -> str:
-        """Return the whitespace character."""
-        return self.text
-
+SPACES_RE = re.compile(r'[ \t]+')  # Matches whitespace only
+NEWLINE_RE = re.compile(r'\n|\r\n|\r')  # Matches newlines in various formats
+WHITESPACE_RE = re.compile(r'\s+')  # Matches all whitespace including newlines
 
 class Match:
     """
@@ -38,11 +13,12 @@ class Match:
     Stores the rule, and the start and end indices into the token list for the matched span.
     The token stream itself is not stored; all context is derived from the original input.
     """
-    def __init__(self, rule: "Rule", start: int, end: int, children: "List[Match] | None" = None):
+    def __init__(self, rule: "Rule", start: int, end: int, children: "List[Match] | None" = None, lasterror: "MatchError | None" = None):
         self.rule = rule
         self.start = start
         self.end = end
         self.children = children or []
+        self.error = lasterror
 
     def __iter__(self):
         return self.walk()
@@ -50,31 +26,10 @@ class Match:
     def __getitem__(self, index: int):
         return self.children[index]
 
-    def tokens(self, tokens: List[Lexeme]) -> List[Lexeme]:
-        """Return the matched tokens from the input token stream."""
-        return tokens[self.start:self.end]
-
-    def add_child(self, child: "Match"):
-        """Add a child match to this match."""
-        self.children.append(child)
-
     def walk(self):
         yield self
         for child in self.children:
             yield from child.walk()
-
-    def tag(self, tokens: str, pairs=None) -> List[Tuple["Rule", str]]:
-        """
-        Collects (Rule, str) pairs for all leaves in the match tree.
-        """
-        pairs = pairs or []
-        if not self.children:
-            pairs.append(
-                (self.rule.__class__.__name__, tokens[self.start:self.end]))
-        else:
-            for child in self.children:
-                child.tag(tokens, pairs)
-        return pairs
 
     def slice(self, tokens: str) -> str:
         """Return the matched text from the input token stream."""
@@ -93,7 +48,6 @@ class Match:
     def __repr__(self):
         return f"Match(rule={self.rule!r}, start={self.start+1}, end={self.end+1})"
 
-
 class MatchError(Exception):
     """
     Raised when a parsing rule fails to match at a given input position.
@@ -108,6 +62,26 @@ class MatchError(Exception):
         self.expected = expected
         self.children = children or []
         self.matched = matched
+        self.branch = len(self.children) > 1  # True if this error has children, indicating a failed branch
+
+    def lastError(self) -> "MatchError | None":
+        """Return the last error in the chain of children."""
+        if not self.children: # bottom, return self
+            return self
+        if self.branch == False: # no branch, continue down the chain
+            return self.children[0].lastError()
+        # if this is a branch, drill down: if the returned error is branch, return that, otherwise return self
+        last = self
+        for child in self.children:
+            check = child.lastError()
+            last = check if check.branch and check.pos > last.pos else last
+        return last
+
+    def lastIndex(self) -> int:
+        """Return the last index of the matched tokens."""
+        if self.children:
+            return max(child.lastIndex() for child in self.children)
+        return self.pos
 
     def __repr__(self):
         return f"MatchError(pos={self.pos+1}, expected={self.expected}, matched={self.matched})"
@@ -142,7 +116,7 @@ class Rule(ABC):
         return self.identifier_
 
     @abstractmethod
-    def consume(self, tokens: str, pos: int = 0) -> Match:
+    def consume(self, tokens: str, pos: int = 0, ignore: re.Pattern = None) -> Match:
         """
         Checks whether this rule matches the input token stream at position `pos`.
 
@@ -161,7 +135,7 @@ class Rule(ABC):
 
     def __repr__(self):
         if self.identifier_:
-            return f"{self.__class__.__name__}<{self.identifier}>(%s)"
+            return f"{self.identifier}<{self.__class__.__name__}>(%s)"
         return f"{self.__class__.__name__}(%s)"
 
 
@@ -173,17 +147,11 @@ class RuleReference(Rule):
     """
     def __init__(self, identifier: str):
         self.identifier_ = identifier
-        self.resolvedTo = None
 
-    def resolve(self, rule: Rule):
-        self.resolvedTo = rule
-
-    def consume(self, tokens: str, pos: int = 0):
-        if self.resolvedTo is None:
-            raise NotImplementedError(
-                f"Unresolved rule reference '{self.identifier}' in grammar. "
-                "Check that all rules are defined.")
-        return self.resolvedTo.consume(tokens, pos)
+    def consume(self, tokens: str, pos: int = 0, ignore: re.Pattern = None) -> Match:
+        raise NotImplementedError(
+            f"Unresolved rule reference '{self.identifier}' in grammar. "
+            "Check that all rules are defined.")
 
     def __repr__(self):
         return super().__repr__().replace("%s", self.identifier)
@@ -196,15 +164,16 @@ class RulePrimitive(Rule, ABC):
         super().__init__()
         self.pattern = pattern
 
+
 class RuleString(RulePrimitive):
     """A rule that matches a specific string."""
     def __init__(self, text: str):
         super().__init__(text)
 
-    def consume(self, tokens: str, pos: int = 0) -> Match:
+    def consume(self, tokens: str, pos: int = 0, ignore: re.Pattern = None) -> Match:
         """Consume tokens based on the rule."""
-        while pos < len(tokens) and tokens[pos] in ' \t\r':
-            pos += 1
+        if ignore and ignore.match(tokens, pos):
+            pos = ignore.match(tokens, pos).end()
         if pos < len(tokens) and tokens.startswith(self.pattern, pos):
             return Match(self, pos, pos + len(self.pattern))
         raise MatchError(pos, self)
@@ -221,10 +190,10 @@ class RulePattern(RulePrimitive):
     def __init__(self, pattern: re.Pattern):
         super().__init__(pattern)
 
-    def consume(self, tokens: str, pos: int = 0) -> Match:
+    def consume(self, tokens: str, pos: int = 0, ignore: re.Pattern = None) -> Match:
         """Match if the pattern can consume tokens starting at pos."""
-        while pos < len(tokens) and tokens[pos] in ' \t\r':
-            pos += 1
+        if ignore and ignore.match(tokens, pos):
+            pos = ignore.match(tokens, pos).end()
         match = self.pattern.match(tokens, pos)
         if match:
             return Match(self, pos, match.end())
@@ -232,17 +201,6 @@ class RulePattern(RulePrimitive):
 
     def __repr__(self):
         return super().__repr__().replace("%s", str(self.pattern))
-
-    def __eq__(self, other):
-        return super().__eq__(other) and self.pattern == other.pattern
-
-
-class RuleClass(RulePattern):
-    """A rule that matches a specific class of lexemes."""
-    def __init__(self, cls: Lexeme):
-        super().__init__(cls.pattern)
-    def __repr__(self):
-        return super().__repr__().replace("%s", repr(self.pattern))
 
     def __eq__(self, other):
         return super().__eq__(other) and self.pattern == other.pattern
@@ -259,7 +217,7 @@ class RuleSingle(Rule, ABC):
             self.rule = rule
 
     @abstractmethod
-    def consume(self, tokens: str, pos: int = 0) -> Match:
+    def consume(self, tokens: str, pos: int = 0, ignore: re.Pattern = None) -> Match:
         pass
 
     def __eq__(self, other):
@@ -268,43 +226,45 @@ class RuleSingle(Rule, ABC):
 
 class RuleOneOrMore(RuleSingle):
     """A rule that matches one or more occurrences of a rule."""
-    def consume(self, tokens: str, pos: int = 0) -> Match:
+    def consume(self, tokens: str, pos: int = 0, ignore: re.Pattern = None) -> Match:
         """Match if the rule can consume one or more tokens."""
         matches = []
         start = pos
+        error = None
         while pos < len(tokens):
-            start = pos
             try:
-                match = self.rule.consume(tokens, pos)
+                match = self.rule.consume(tokens, pos, ignore)
                 matches.append(match)
                 pos = match.end
             except MatchError as e:
+                error = e
                 if matches:  # If we have matched at least one token, return the match
                     break
-                raise MatchError(pos, self,
-                                 [e])  # If no tokens matched, raise an error
+                raise MatchError(pos, self, [e])  # If no tokens matched, raise an error
         if not matches:
             raise MatchError(pos, self)
-        return Match(self, start, pos, matches)
-
+        return Match(self, start, pos, matches, lasterror = error)
+    
+    def visit(self, matches, tokens: str):
+        """Visit all matches and return a list of their tokens."""
+        
     def __repr__(self):
         return super().__repr__().replace("%s", repr(self.rule))
 
 
 class RuleZeroOrMore(RuleSingle):
     """A rule that matches zero or more occurrences of a rule."""
-    def consume(self, tokens: str, pos: int = 0) -> Match:
+    def consume(self, tokens: str, pos: int = 0, ignore: re.Pattern = None) -> Match:
         """Match if the rule can consume zero or more tokens."""
         matches = []
         start = pos
         while pos < len(tokens):
-            start = pos
             try:
-                match = self.rule.consume(tokens, pos)
+                match = self.rule.consume(tokens, pos, ignore)
                 matches.append(match)
                 pos = match.end
-            except MatchError:
-                return Match(self, start, start)
+            except MatchError as e:
+                return Match(self, start, pos, lasterror = e)
         return Match(self, start, pos, matches)
 
     def __repr__(self):
@@ -313,13 +273,13 @@ class RuleZeroOrMore(RuleSingle):
 
 class RuleOptional(RuleSingle):
     """A rule that matches zero or one occurrence of a rule."""
-    def consume(self, tokens: str, pos: int = 0) -> Match:
+    def consume(self, tokens: str, pos: int = 0, ignore: re.Pattern = None) -> Match:
         """Match if the rule can consume zero or one token."""
         try:
-            match = self.rule.consume(tokens, pos)
+            match = self.rule.consume(tokens, pos, ignore)
             return Match(self, match.start, match.end, [match])
-        except MatchError:
-            return Match(self, pos, pos)
+        except MatchError as e:
+            return Match(self, pos, pos, lasterror = e)
 
     def __repr__(self):
         return super().__repr__().replace("%s", repr(self.rule))
@@ -327,9 +287,9 @@ class RuleOptional(RuleSingle):
 
 class RuleAndPredicate(RuleSingle):
     """A rule that succeeds if the inner rule matches, but consumes no tokens."""
-    def consume(self, tokens: str, pos: int = 0) -> Match:
+    def consume(self, tokens: str, pos: int = 0, ignore: re.Pattern = None) -> Match:
         try:
-            self.rule.consume(tokens, pos)  # Try matching inner rule
+            self.rule.consume(tokens, pos, ignore)  # Try matching inner rule
             # If successful, return a zero-width match at pos
             return Match(self, pos, pos)
         except MatchError as e:
@@ -341,9 +301,9 @@ class RuleAndPredicate(RuleSingle):
 
 class RuleNotPredicate(RuleSingle):
     """A rule that succeeds if the inner rule does not match, but consumes no tokens."""
-    def consume(self, tokens: str, pos: int = 0) -> Match:
+    def consume(self, tokens: str, pos: int = 0, ignore: re.Pattern = None) -> Match:
         try:
-            self.rule.consume(tokens, pos)  # Try matching inner rule
+            self.rule.consume(tokens, pos, ignore)  # Try matching inner rule
         except MatchError:
             # If it fails, return a zero-width match at pos
             return Match(self, pos, pos)
@@ -365,7 +325,7 @@ class RuleMultiple(Rule, ABC):
         ]
 
     @abstractmethod
-    def consume(self, tokens: str, pos: int = 0) -> Match:
+    def consume(self, tokens: str, pos: int = 0, ignore: re.Pattern = None) -> Match:
         pass
 
     def __eq__(self, other):
@@ -374,14 +334,13 @@ class RuleMultiple(Rule, ABC):
 
 class RuleAll(RuleMultiple):
     """A rule that matches all tokens in the input."""
-    def consume(self, tokens: str, pos: int = 0) -> Match:
+    def consume(self, tokens: str, pos: int = 0, ignore: re.Pattern = None) -> Match:
         """Match if all rules can consume tokens starting at pos."""
         matches = []
         start = pos
         for rule in self.rules:
-            start = pos
             try:
-                match = rule.consume(tokens, pos)
+                match = rule.consume(tokens, pos, ignore)
                 matches.append(match)
                 pos = match.end
             except MatchError as e:
@@ -395,12 +354,12 @@ class RuleAll(RuleMultiple):
 
 class RuleChoice(RuleMultiple):
     """A rule that matches one of several alternatives."""
-    def consume(self, tokens: str, pos: int = 0) -> Match:
+    def consume(self, tokens: str, pos: int = 0, ignore: re.Pattern = None) -> Match:
         """Match if any of the rules can consume tokens starting at pos."""
         unmatched = []
         for rule in self.rules:
             try:
-                match = rule.consume(tokens, pos)
+                match = rule.consume(tokens, pos, ignore)
                 return Match(self, match.start, match.end, [match])
             except MatchError as e:
                 unmatched.append(e)
@@ -417,17 +376,36 @@ class GrammarError(Exception):
     occurred at, the line and column number, and the MatchError that caused
     the failure.
     """
-    def __init__(self, index: int, line: int, column: int, match: MatchError):
-        self.match = match
-        self.index = index
-        self.line = line
-        self.column = column
+    pass
 
 class GrammarParseError(Exception):
     """
     Raised when a grammar fails to parse.
     """
-    pass
+    def __init__(self, index: int, line: int, column: int, token_slice: str, exception: MatchError = None):
+        self.index = index
+        self.line = line
+        self.column = column
+        self.tokens = token_slice
+        self.exception = exception
+
+    def __str__(self):
+        # Build the base header
+        last = self.exception.lastError()
+        if isinstance(last.expected, RuleSingle):
+            expect = last.expected.identifier
+        else:
+            expect = ', '.join(rule.identifier for rule in last.expected.rules)
+        header = f"Expected {expect}"
+        # Show exact location and context
+        pointer_line = "-" * (self.column - 1) + "^"
+        # The input fragment where it stopped, with context
+        snippet = self.tokens
+        return (
+            f"{header} at line {self.line}, column {self.column}:\n"
+            f"{snippet}\n"
+            f"{pointer_line}"
+        )
 
 class GrammarDeferResolve(Exception):
     """
@@ -447,13 +425,21 @@ class GrammarMissingResolve(Exception):
         super().__init__(f"Rule '{identifier}' is missing from the grammar.")
         self.identifier = identifier
 
+class RuleIgnore:
+    NONE = 0x00
+    SPACES = 0x01
+    NEWLINE = 0x02
+    WHITESPACE = SPACES | NEWLINE
+
+IGNORABLE = [None, SPACES_RE, NEWLINE_RE, WHITESPACE_RE]
 
 class Grammar:
     """A grammar definition for the Firestarter parser."""
-    def __init__(self):
+    def __init__(self, ignore: RuleIgnore = RuleIgnore.NONE):
         self.rule: Rule | None = None
         self.rules: Dict[str, Rule] = {}
         self.dirty = False
+        self.ignore = ignore  # bitmask for ignored lexemes (e.g. whitespace, newlines)
 
     def register(self, **kwargs: Rule):
         """Register a rule with the grammar."""
@@ -479,12 +465,12 @@ class Grammar:
                 callback(self.rules[rule.identifier])
             else:
                 stack.append(rule)
-        
+
         toVisit = [(identifier, base) for identifier, base in self.rules.items()]
         misses = 0
         while toVisit:
             if misses == len(self.rules):
-                raise GrammarParseError(f"Circular dependency detected in grammar rules. Triggerd by: {toVisit[-1][0]}")
+                raise GrammarError(f"Circular dependency detected in grammar rules. Triggerd by: {toVisit[-1][0]}")
             identifier, base = toVisit.pop(0)
             stack, visited = [base], []
             try:
@@ -494,7 +480,7 @@ class Grammar:
                             continue
                     visited.append(this)
                     if isinstance(this, RuleReference):
-                        raise GrammarParseError(f"Identifier '{this.identifier}' has an unresolved reference as its root rule.")
+                        raise GrammarError(f"Identifier '{this.identifier}' has an unresolved reference as its root rule.")
                     elif isinstance(this, RuleSingle):
                         def assign(x): setattr(this, "rule", x)
                         handle_rule(this.rule, assign)
@@ -505,33 +491,39 @@ class Grammar:
             except GrammarDeferResolve as e:
                 toVisit.append((identifier, base))
         return self
-    
+
     def parse(self, tokens: str):
+        def getLineInfo(tokens: str, error: MatchError):
+            # traverse match error to find the last index that failed to match
+            pos = error.lastIndex()
+            lines = tokens.split('\n')
+            row = tokens.count('\n', 0, pos) + 1
+            line = lines[row - 1] if row <= len(lines) else ""
+            line_start = tokens.rfind('\n', 0, pos) + 1
+            column = pos - line_start + 1
+            
+            return column, row, line
         """Parse the input tokens using the defined grammar rules."""
         if not self.rule:
             raise RuntimeError(f"No rule defined for {self.__class__.__name__}.")
         if self.dirty:
-            print("Resolving grammar rules...")
             self.resolve()
         pos = 0
         matches = []
+        ignore = IGNORABLE[self.ignore]
         while pos < len(tokens):
             try:
-                match = self.rule.consume(tokens, pos)
+                match = self.rule.consume(tokens, pos, ignore)
                 matches.append(match)
-                pos = match.end
             except MatchError as e:
-                line = tokens.count('\n', 0, pos) + 1
-                column = pos - tokens.rfind(
-                    '\n', 0, pos) if '\n' in tokens[:pos] else pos + 1
-                raise GrammarError(pos, line, column, e)
-            if match.end == match.start:
-                raise MatchError(pos, match.rule, None, matches)
+                col, row, line = getLineInfo(tokens, e)
+                raise GrammarParseError(pos, row, col, line, exception = e)
+            pos = match.end
         return matches
 
-PEG = Grammar().register(
+PEG = Grammar(RuleIgnore.SPACES).register(
         Comment=RuleAll(RuleString("#"), RulePattern(re.compile(r'[^\n]*'))),
-        Newline=RuleChoice(RuleString("\n"), RuleString("\r\n"), RuleString("\r")),
+        Newline=RuleChoice(RulePattern(NEWLINE_RE)),
         Identifier=RulePattern(re.compile(r'[a-zA-Z_][a-zA-Z0-9_]*')),
         RegEx=RulePattern(re.compile(r"~'(?:[^'\\]|\\.)*'")),
         String=RulePattern(re.compile(r'"(?:[^"\\]|\\.)*"')),
@@ -565,8 +557,30 @@ def make_grammar(text: str) -> Grammar:
     This function parses the grammar text and returns a Grammar object.
     It raises GrammarError if the grammar is invalid or cannot be resolved.
     """
+    def pretty_print(self, tokens: str, strict: bool = True, highlight: str = "\033[94m"):
+        """Pretty print the match tree, showing the rule and matched text."""
+        reset = "\033[0m"
+        def render(match: Match, tokens, depth=0):
+            if match.rule.identifier_ :
+                out = f"{' ' * depth}{highlight}{match.rule.identifier}{reset}<{match.rule}>:'{match.slice(tokens)}'\n"
+            elif not strict:
+                out = f"{' ' * depth}{match.rule.__class__.__name__}:'{match.slice(tokens)}'\n"
+            else:
+                out = ''
+            for child in match.children:
+                out += render(child, tokens, depth + 2)
+            return out
+        print(render(self,tokens).rstrip())
+    
     if not text.strip():
         raise GrammarError("Empty grammar definition provided.")
-    matches = PEG.parse(text)
-    
-    return grammar
+    try:
+        matches = PEG.parse(text)
+    except GrammarParseError as e:
+        print(e)
+        return
+    for match in matches:
+        rule, start, end, children = match.rule, match.start, match.end, match.children
+        identifier = rule.identifier
+        pretty_print(match, text, strict=False)
+    return Grammar()
