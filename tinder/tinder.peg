@@ -3,8 +3,8 @@ Line        -> ( Rule / Comment / Newline )
 ws          <- ~'[ \\t]' # ' ' or '\t'
 Comment     -- "//" ~'[^\n]*'
 
-Rule        -> Expression Newline
-Newline     -- ~'\n|\r\n|\r' # newline
+Rule        -> Expression ~'\n|\r\n|\r'
+Newline     <- ~'\n|\r\n|\r' # newline
 
 Expression  -> Keyword / Goto
 Keyword     -> keyword / flow
@@ -12,22 +12,22 @@ Keyword     -> keyword / flow
 Identifier  -> Redirect / Lookup / String
 
 keyword     -> Write / Set / Call / flow
-Call        <- "call" Lookup Group
-Write       <- "write" Group
+Call        <- "call" Lookup Args
+Write       <- "write" Args
 Set         <- "set" Identifier value
 
 flow        -> Jump / Goto / Stop / Input
-Input       <- "input" Group
+Input       <- "input" Args
 Jump        <- "jump" ( Identifier / Number ) ( "`" condition )?
 Goto        <- "#" Lookup
 Stop        <- "stop"
 
 operation   -> From / Add / Subtract / Max / Min
 From        <- "from" ( function / Identifier ) Group
-Add         <- "add" Group
-Subtract    <- "subtract" Group
-Max         <- "max" Group
-Min         <- "min" Group
+Add         <- "add" Args
+Subtract    <- "subtract" Args
+Max         <- "max" Args
+Min         <- "min" Args
 
 condition   -> And / Or / In / If / Not / Less / Greater / Equal
 And         <- "and" Group
@@ -39,12 +39,13 @@ Less        <- "less" value value
 Greater     <- "greater" value value
 Equal       <- "equal" value value
 
-Group       -> (!Nil value)+ Nil?
+Group       <- "[" Args "]"
+Args        -> (!Nil value)+ Nil?
 value       -> constants / Number / Identifier / function
-function    -> "`" Call / operation / condition
+function    -> "`" (Call / operation / condition)
 
 Redirect    <- "@" Lookup
-Lookup      <- ~"[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)*"
+Lookup      <- ~"[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*"
 String      <- ~'"(?:[^"\\]|\\.)*"'
 Number      <- ~"-?[0-9]+(\\.[0-9]+)?"
 

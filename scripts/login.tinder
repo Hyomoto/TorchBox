@@ -1,8 +1,8 @@
+v1
     write "\n`11Welcome to [[PROG_NAME]]`0"
     write "`1-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
 # get_username
     input "`11Lo' who goes there? (`0username`11):"
-
 # find_user
     set USER `call login.find_user INPUT
     jump user_not_found `not USER
@@ -16,8 +16,8 @@
 # user_not_found
     set TEMP INPUT
     input "`3I do not know you, stranger. Are you new here? [`1Y`3|`1N`3]: [`1Y`3]"
-    set INPUT `or INPUT "y"
-    jump new_user `in INPUT "y"
+    set INPUT `or [INPUT "y"]
+    jump new_user `in INPUT ["y"]
 
     input "`3Perhaps I was mistaken. Who did you say you were? (`11username`3):"
     jump find_user
@@ -30,7 +30,7 @@
     write "\n`11Don't go forgetting it now, just a few more questions for you."
 # choose_gender
     input "`3And your gender? (`11M`3|`11F`3) [`11M`3]:"
-    set USER.gender `in `or INPUT "m" Nil "m" "f"
+    set USER.gender `in `or [INPUT "m"] ["m" "f"]
     jump choose_gender `not USER.gender
     write ""
     set m "`11Then don't be wearing any skirts around here, lad.`0"

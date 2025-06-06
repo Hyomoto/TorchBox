@@ -169,7 +169,7 @@ class Firestarter:
         if not isinstance(op, type) or not issubclass(op, Symbol):
             raise TypeError(f"Expected a Symbol class, got {type(op).__name__}")
         name = name or str(op.__name__)
-        opcode = self.opcodes[name]
+        opcode = self.opcodes[op.__name__]
         if not opcode:
             raise FirestarterError(f"Opcode {op.__name__} not registered.")
         key = name if name else opcode[0]

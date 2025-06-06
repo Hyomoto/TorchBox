@@ -29,12 +29,11 @@ class Crucible:
         self.access = access
 
     def __contains__(self, var: str):
-        scope = self.variables
-        for var in var.split("."):
-            if var not in self.variables:
-                return False
-            scope = scope[var]
-        return True
+        try:
+            self.get(var)
+            return True
+        except CrucibleError:
+            return False
 
     def __repr__(self):
         flags = ""

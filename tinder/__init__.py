@@ -90,7 +90,6 @@ from firestarter import Firestarter, FirestarterError, Symbol, Value as Abstract
 from firestarter.grammar import make_grammar_from_file, RuleIgnore, AST
 import inspect
 import sys
-import re
 
 GRAMMARS = {
     "v1": make_grammar_from_file(import_files("tinder").joinpath("tinder.peg"), RuleIgnore.SPACES)
@@ -186,6 +185,10 @@ class Lookup(Identifier):
 
 class Redirect(Lookup):
     """A lookup that redirects to another variable in the environment."""
+    def __init__(self, value: Value | str):
+        if isinstance(value, Value):
+            value = value.value
+        super().__init__(value)
     def transmute(self, env: Crucible):
         lookup = super().transmute(env)
         return env.get(lookup)
@@ -242,7 +245,7 @@ class Write(Kindling):
         self.text = text
         self.newline = newline if newline else Boolean(False)
     def transmute(self, env: Crucible):
-        if self.identifier not in env.variables:
+        if self.identifier not in env:
             env.set(self.identifier, "")
         env.set(self.identifier, env.get(self.identifier) + self.text.transmute(env) +  ("\n" if self.newline.transmute(env) else ""))
     def __repr__(self):
@@ -280,7 +283,7 @@ class Comparison(Kindling):
 
 class In(Groupables,Comparison):
     """Returns the value if it is in the list, or None."""
-    def __init__(self, value: Value, *group: Group | Value):
+    def __init__(self, value: Kindling, *group: Group | Value):
         super().__init__(*group)
         self.value = value
     def transmute(self, env: Crucible):
@@ -294,10 +297,10 @@ class In(Groupables,Comparison):
 
 class And(Groupables,Comparison):
     """Checks if all values are true."""
-    def __init__(self, *group: Group | Value):
+    def __init__(self, group: Group | Value):
         if len(group) < 2:
             raise TinderBurn("And requires at least two values.")
-        super().__init__(*group)
+        super().__init__(group)
     def transmute(self, env: Crucible):
         items = self.group.transmute(env)
         for item in items:
@@ -309,21 +312,22 @@ class And(Groupables,Comparison):
 
 class Or(Groupables,Comparison):
     """Returns the first value that is Truthy, or None."""
-    def __init__(self, *group: Group | Value):
+    def __init__(self, group: Group | Value):
         if len(group) < 2:
             raise TinderBurn("And requires at least two values.")
-        super().__init__(*group)
+        super().__init__(group)
     def transmute(self, env: Crucible):
         for item in self.group.list:
-            if item.transmute(env):
-                return True
-        return False
+            value = item.transmute(env)
+            if value:
+                return value
+        return None
     def __repr__(self):
         return f"Or({self.group.list})"
 
 class Not(Comparison):
     """Negates a value or operation."""
-    def __init__(self, value: Value):
+    def __init__(self, value: Kindling):
         self.value = value
     def transmute(self, env: Crucible):
         if self.value.transmute(env):
@@ -404,7 +408,7 @@ class Subtract(Groupables, Kindling):
 
 class Call(Groupables, Kindling):
     """Calls a function in the environment with arguments."""
-    def __init__(self, identifier: Identifier | String, *group: Optional[Group | Value]):
+    def __init__(self, identifier: Identifier | String, *group: Optional[Group | Kindling]):
         super().__init__(*group)
         self.identifier = identifier
     def transmute(self, env: Crucible):
@@ -494,7 +498,7 @@ class Tinder:
                 line += 1
                 break
             except Exception as e:
-                raise TinderBurn(f"Error at line {line+1}: {e}") from e
+                raise TinderBurn(f"Run failed on line {line + 1}: {e}") from e
         return line
 
 def getAllSymbols():
@@ -514,6 +518,7 @@ class Tinderstarter(Firestarter):
             self.register(obj)
         self.macro(Write, None, Lookup("OUTPUT"), str, Number(1))  # Alias write with newline
         self.macro(Input, None, Lookup("INPUT"), str) # Alias input with prompt
+        self.macro(NoOp, "Newline")
 
     def compile(self, source: str) -> Tinder:
         version = source[:source.find("\n")]
@@ -525,6 +530,4 @@ class Tinderstarter(Firestarter):
         if version not in GRAMMARS:
             raise TinderBurn(f"Unsupported Tinder version: {version}. Available versions: {list(GRAMMARS.keys())}")
         self.grammar = GRAMMARS[version]
-        ast = self.parseTokens(source)
-        #ast.pretty_print()
         return super().compile(source, Tinder)
