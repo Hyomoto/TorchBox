@@ -1,14 +1,15 @@
-from constants import Ansi
-import os
-from firestarter.grammar import Grammar, GrammarError, make_grammar_from_file
+from tinder import Tinderstarter, TinderBurn
+from tinder.crucible import Crucible
 
 def main():
-    try:
-        grammar = make_grammar_from_file("./firestarter/peg.peg")
-    except GrammarError as e:
-        print(e)
-        return
-    #print(grammar)
+    with open("./scripts/battle.tinder", "r") as f:
+        input = f.read()
+    tinder = Tinderstarter()
+    script = tinder.compile(input)
+    crucible = Crucible()
+    line = script.run(0, crucible)
+    print(line)
+    print(crucible.variables)
 
 if __name__ == "__main__":
     main()

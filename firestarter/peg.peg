@@ -1,28 +1,19 @@
-Peg        <- (Line Newline?)+
-Line       <- (Comment / RuleLine)
-RuleLine   <- Identifier "<-" Expression Comment?
-Comment    <- "#" ~'[^\n]*'
-Expression <- Choice
-
-# Choice: left-associative, e.g. a / b / c
-Choice     <- Sequence ("/" Sequence)*
-
-# Sequence: one or more expressions
-Sequence   <- Primary (Primary)*
-
-# Primary: what can appear as a unit in a sequence or choice
-Primary    <- String / RegEx / Identifier / Group / Quantified
-
-# Group: parenthesized expression, e.g. (expr)
-Group      <- "(" Expression ")"
-
-# Quantified: expression with *, +, or ?
-Quantified <- (String / RegEx / Identifier / Group) Quantifier
-
-Quantifier <- "*" / "+" / "?"
-
-String     <- ~'"([^"\\]|\\.)*"'
-RegEx      <- ~'~"([^"\\]|\\.)*"'
-Identifier <- ~'[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*'
-
-Newline    <- "\r\n" / "\n" / "\r"
+Grammar       <- (Rule / Newline / Comment )+
+# Comment lines start with a hash (#) and can be ignored
+Rule          <- ( Strict / Identifier ) "<-" Expression Comment?
+Priority      <- "<-" / "--" / "->"
+Comment       <- "#" ~'[^\n]*' Newline
+Expression    <- Choice
+Choice        <- Sequence ("/" Sequence)*
+Sequence      <- (Prefix / Suffix)*
+Prefix        <- Primary Quantifier?
+Suffix        <- Predicate Primary
+Primary       <- String / RegEx / Identifier / Group
+Group         <- "(" Expression ")"
+Predicate     <- "&" / "!"
+Quantifier    <- "*" / "+" / "?"
+String        <- ~'"(?:[^"\\]|\\.)*"'
+RegEx         <- ~"~(['\"])(?:\\.|(?!\1).)*\1"
+Strict        <- "[" Identifier "]"
+Identifier    <- ~'[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*'
+Newline       <- ~'\n|\r\n|\r'

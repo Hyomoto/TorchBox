@@ -49,11 +49,11 @@ class UnitTest:
         cls.info(text, verbose=True, icon=icon, depth=0)
 
     @classmethod
-    def finished(cls, text: str, errors: int, tests: int = None):
+    def finished(cls, text: str, errors: int):
         if errors:
-            cls.info(f"{Ansi.RED}{f'{str(tests)} ' if tests else 'Test '}{text} finished with {errors} errors.", verbose=True, icon=cls.FAIL_EMOJI, depth=0)
+            cls.info(f"{Ansi.RED}{text} finished with {errors} errors.", verbose=True, icon=cls.FAIL_EMOJI, depth=0)
         else:
-            cls.info(f"{Ansi.GREEN}{f'{str(tests)} ' if tests else 'Test '}{text} finished successfully!", verbose=True, icon=cls.PASS_EMOJI, depth=0)
+            cls.info(f"{Ansi.GREEN}{text} finished successfully!", verbose=True, icon=cls.PASS_EMOJI, depth=0)
 
     @classmethod
     def passed(cls, text: str, verbose: bool = True, depth: int = 1):
@@ -68,7 +68,7 @@ class UnitTest:
         try:
             assert result == expected, TestException(f"returned {result} but expected {expected}")
         except AssertionError as e:
-            cls.failed(f"{description}{Ansi.RED} raised {e}", verbose, depth)
+            cls.failed(f"{description}{Ansi.RED} {e}", verbose, depth)
             return 1
         cls.passed(description, verbose, depth)
         return 0
@@ -78,11 +78,15 @@ class UnitTest:
                             description: str,
                             result: Any,
                             expected: Any,
-                            assertion: Callable,
+                            assertion: Callable | Tuple[Callable, ...],
                             verbose: bool = True,
                             depth: int = 0
                             ):
-        return cls.test(description, assertion(result), expected, verbose, depth)
+        if type(assertion) is Tuple:
+            result = assertion[0](*assertion[1:])
+        else:
+            result = assertion(result)
+        return cls.test(description, result, expected, verbose, depth)
     
     @classmethod
     def test_legal_op(cls,
@@ -104,13 +108,14 @@ class UnitTest:
                                      description: str, 
                                      action: Tuple[Any, ...], 
                                      expected: Any, 
-                                     assertion: Callable, 
+                                     assertion: Callable | Tuple[Callable, ...],
                                      verbose: bool = True, 
                                      depth: int = 0
                                      ):
         try:
             result = action[0](*action[1:])
         except Exception as e:
+            raise e
             cls.failed(f"{description}{Ansi.RED} raised {e}", verbose, depth)
             return 1
         return cls.test_with_assertion(description, result, expected, assertion, verbose, depth)

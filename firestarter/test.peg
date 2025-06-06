@@ -1,0 +1,10 @@
+Document    <- ( Line / '\n' )*
+Line        <- ( Comment / Statement ) '\n'
+Comment     !- '//' ~'[^\n]*'
+Statement   <- Keyword
+Keyword     <- Input / Output
+Input       << 'input' Group
+Output      << 'output' String
+Group       <- ( String / Number )*
+String      <- ~'"(?:[^"\\]|\\.)*"'
+Number      <- ~"\d+(\.\d+)?"

@@ -82,12 +82,19 @@ Author: Devon "Hyomoto" Mullane, 2025
 
 License: MIT License
 """
-from typing import Type, List, Any
-from scripts.crucible import Crucible
+from importlib.resources import files as import_files
+from typing import Tuple, Type, Dict, List, Optional, Any
+from .crucible import Crucible
 from abc import ABC, abstractmethod
-from firestarter import Firestarter, Grammar, Lexeme, Value, Primitive
+from firestarter import Firestarter, FirestarterError, Symbol, Value as AbstractValue
+from firestarter.grammar import make_grammar_from_file, RuleIgnore, AST
+import inspect
+import sys
 import re
 
+GRAMMARS = {
+    "v1": make_grammar_from_file(import_files("tinder").joinpath("tinder.peg"), RuleIgnore.SPACES)
+}
 # exceptions
 
 class TinderBurn(Exception):
@@ -113,49 +120,80 @@ class JumpTo(Yield):
     def __str__(self):
         return f"JumpTo({self.line})"
 
+# Kindling base class
+
+class Kindling(Symbol, ABC):
+    """Base class for all kindling operations."""
+    @abstractmethod
+    def transmute(self, env: Crucible) -> Any | None:
+        """Transmute the kindling into a value or operation in the Crucible."""
+        pass
+
 # primitives
 
-class String(Primitive):
-    """A string value."""
+class Value(AbstractValue, Kindling):
     @property
-    def primitive(self) -> Type[str]:
-        return str
+    @abstractmethod
+    def type(self) -> Type[Any]:
+        """Return the primitive type of the value."""
+        pass
+    def transmute(self, env: Crucible):
+        return self.value
     def __repr__(self):
-        return f"String({self.var})"
+        return f"{self.__class__.__name__}({self.value})"
 
-class Number(Primitive):
+class String(Value):
+    """A string value."""
+    def __init__(self, value: str):
+        self.value = self.type(value)
+        if value.startswith('"') and value.endswith('"'):
+            self.value = self.value[1:-1]
+        elif value.startswith("'") and value.endswith("'"):
+            self.value = self.value[1:-1]
+    @property
+    def type(self):
+        return str
+
+class Number(Value):
     """A number value."""
     @property
-    def primitive(self) -> Type[str]:
+    def type(self):
         return float
-    def __repr__(self):
-        return f"Number({self.var})"
+
+class Boolean(Value):
+    """A boolean value."""
+    @property
+    def type(self):
+        return bool
 
 # values
 
-class Lookup(Value):
+class Identifier(Value):
+    pass
+
+class Lookup(Identifier):
     """A lookup retrieves a variable from the environment."""
-    def __init__(self, var: str):
-        self.var = var
-    def get(self, env: Crucible):
-        return env.get(self.var)
-    def __repr__(self):
-        return f"Lookup({self.var})"
-    
+    def __init__(self, value: String | str):
+        if isinstance(value, String):
+            self.value: str = value.value
+        else:
+            self.value = value
+    @property
+    def type(self):
+        return str
+    def transmute(self, env: Crucible):
+        return env.get(self.value)
+
 class Redirect(Lookup):
     """A lookup that redirects to another variable in the environment."""
-    def __init__(self, var: str):
-        super().__init__(var)
-    def get(self, env: Crucible):
-        lookup = super().get(env)
+    def transmute(self, env: Crucible):
+        lookup = super().transmute(env)
         return env.get(lookup)
-    def __repr__(self):
-        return f"Redirect({self.var})"
 
 class Group(Value):
     """A group of values that can be retrieved as a list."""
-    def __init__(self, *items: Any):
-        self.list = items
+    def __init__(self, *items: Kindling):
+        self.list = list(items)
     def __getitem__(self, index: int):
         return self.list[index] if index < len(self.list) else None
     def __setitem__(self, index: int, value: Value):
@@ -163,238 +201,264 @@ class Group(Value):
             self.list[index] = value
         else:
             raise IndexError("Index out of range for Group.")
-    def get(self, env: Crucible):
-        return [item.get(env) for item in self.list]
+    @property
+    def type(self) -> Type[List]:
+        return list
+    def transmute(self, env: Crucible):
+        return [item.transmute(env) for item in self.list]
+    def __len__(self):
+        return len(self.list)
     def __repr__(self):
         return f"Group({self.list})"
+    def __contains__(self, item: Any):
+        return item in self.list
+
+class Groupables:
+    """An operation that operates on a group of values."""
+    def __init__(self, *group: Group):
+        if len(group) == 1 and isinstance(group[0], Group):
+            self.group = group[0]
+        else:
+            self.group = Group(*group)
 
 # kindling operations
-
-class Kindling(Value, ABC):
-    """Base class for all kindling operations."""
-    def __init__(self):
-        pass
-    @abstractmethod
-    def get(self, env: Crucible) -> Any | None:
-        pass
-
-class From(Kindling):
-    """A kindling that retrieves a value from a list."""
-    def __init__(self, var: Value, index: Value):
-        self.var = str(var.var)
-        self.index = index
-    def get(self, env: Crucible):
-        return env.get(self.var)[self.index.get(env)]
-    def __repr__(self):
-        return f"From({self.var})"
 
 # set
 
 class Set(Kindling):
     """Sets a variable in the environment."""
-    def __init__(self, var: Value, value: Value):
-        self.var = str(var.var)
+    def __init__(self, identifier: Identifier, value: Kindling ):
+        self.identifier = identifier.value
         self.value = value
-    def get(self, env: Crucible):
-        env.set(self.var, self.value.get(env))
+    def transmute(self, env: Crucible):
+        env.set(self.identifier, self.value.transmute(env))
     def __repr__(self):
-        return f"Set({self.var}, {self.value})"
+        return f"Set(identifier={self.identifier}, value={self.value})"
 
 class Write(Kindling):
     """Writes a string to a variable in the environment."""
-    def __init__(self, var: Value, text: Value, newline: Value = None):
-        self.var = str(var.var)
+    def __init__(self, identifier: Identifier, text: Identifier | String, newline: Lookup | Boolean = None):
+        self.identifier = identifier.value
         self.text = text
-        self.newline = newline or Number(1)  # Optional newline condition
-    def get(self, env: Crucible):
-        env.set(self.var, env.get(self.var) + self.text.get(env) + "\n" if self.newline.get(env) else "")
+        self.newline = newline if newline else Boolean(False)
+    def transmute(self, env: Crucible):
+        if self.identifier not in env.variables:
+            env.set(self.identifier, "")
+        env.set(self.identifier, env.get(self.identifier) + self.text.transmute(env) +  ("\n" if self.newline.transmute(env) else ""))
     def __repr__(self):
-        return f"Write({self.var}, {self.text})"
+        return f"Write(identifier={self.identifier}, text={self.text}, newline={self.newline})"
 
 class Input(Kindling):
     """Sets a variable in the environment based and yields execution."""
-    def __init__(self, var: Value, prompt: Value):
-        self.var = str(var.var)
+    def __init__(self, identifier: Identifier, prompt: Identifier | String):
+        self.identifier = identifier.value
         self.prompt = prompt
-    def get(self, env: Crucible):
-        env.set(self.var,self.prompt.get(env))
+    def transmute(self, env: Crucible):
+        env.set(self.identifier, self.prompt.transmute(env))
         raise Yield()
     def __repr__(self):
-        return f"Input({self.var}, {self.prompt})"
+        return f"Input(identifier={self.identifier}, prompt={self.prompt})"
+
+# get
+
+class From(Groupables, Kindling):
+    """A kindling that retrieves a value from a list."""
+    def __init__(self, index: Identifier | Number, *group: Group | Value):
+        super().__init__(*group)
+        self.index = index
+    def transmute(self, env: Crucible):
+        index = self.index.transmute(env)
+        if index < 0 or index >= len(self.group.list):
+            return None
+        return self.group.list[index].transmute(env)
+    def __repr__(self):
+        return f"From(index={self.index}, group={self.group})"
 
 # comparison
-
 class Comparison(Kindling):
     pass
 
-class In(Comparison):
+class In(Groupables,Comparison):
     """Returns the value if it is in the list, or None."""
-    def __init__(self, value: Value, *ops: Value):
+    def __init__(self, value: Value, *group: Group | Value):
+        super().__init__(*group)
         self.value = value
-        self.ops = ops
-    def get(self, env: Crucible):
-        compare = self.value.get(env)
-        for op in self.ops:
-            result = op.get(env)
-            if result == compare:
-                return result
+    def transmute(self, env: Crucible):
+        left = self.value.transmute(env)
+        right = self.group.transmute(env)
+        if left in right:
+            return left
         return None
     def __repr__(self):
-        return f"In({self.value}, {self.ops})"
+        return f"In(value={self.value}, group={self.group})"
 
-class And(Comparison):
+class And(Groupables,Comparison):
     """Checks if all values are true."""
-    def __init__(self, *ops: Value):
-        self.ops = ops
-    def get(self, env: Crucible):
-        for op in self.ops:
-            if not op.get(env):
+    def __init__(self, *group: Group | Value):
+        if len(group) < 2:
+            raise TinderBurn("And requires at least two values.")
+        super().__init__(*group)
+    def transmute(self, env: Crucible):
+        items = self.group.transmute(env)
+        for item in items:
+            if not item:
                 return False
         return True
     def __repr__(self):
-        return f"And({self.ops})"
+        return f"And({self.group.list})"
 
-class Or(Comparison):
+class Or(Groupables,Comparison):
     """Returns the first value that is Truthy, or None."""
-    def __init__(self, *ops: Value):
-        self.ops = ops
-    def get(self, env: Crucible):
-        for op in self.ops:
-            result = op.get(env)
-            if op.get(env):
-                return result
-        return None
+    def __init__(self, *group: Group | Value):
+        if len(group) < 2:
+            raise TinderBurn("And requires at least two values.")
+        super().__init__(*group)
+    def transmute(self, env: Crucible):
+        for item in self.group.list:
+            if item.transmute(env):
+                return True
+        return False
     def __repr__(self):
-        return f"Or({self.ops})"
+        return f"Or({self.group.list})"
 
 class Not(Comparison):
     """Negates a value or operation."""
-    def __init__(self, op: Value):
-        self.op = op
-    def get(self, env: Crucible):
-        return not self.op.get(env)
+    def __init__(self, value: Value):
+        self.value = value
+    def transmute(self, env: Crucible):
+        if self.value.transmute(env):
+            return False
+        return True
     def __repr__(self):
-        return f"Not({self.op})"
-    
+        return f"Not({self.value})"
+
 class Less(Comparison):
     """Checks if the left value is less than the right value."""
     def __init__(self, left: Value, right: Value):
         self.left = left
         self.right = right
-    def get(self, env: Crucible):
-        return self.left.get(env) < self.right.get(env)
+    def transmute(self, env: Crucible):
+        return self.left.transmute(env) < self.right.transmute(env)
     def __repr__(self):
-        return f"Less({self.left}, {self.right})"
-    
+        return f"Less({self.left} < {self.right})"
+
 class Greater(Comparison):
     """Checks if the left value is greater than the right value."""
     def __init__(self, left: Value, right: Value):
         self.left = left
         self.right = right
-    def get(self, env: Crucible):
-        return self.left.get(env) > self.right.get(env)
+    def transmute(self, env: Crucible):
+        return self.left.transmute(env) > self.right.transmute(env)
     def __repr__(self):
-        return f"Greater({self.left}, {self.right})"
+        return f"Greater({self.left} > {self.right})"
 
 # data manipulation
 
-class Max(Kindling):
+class Max(Groupables, Kindling):
     """Returns the maximum value from a list of values."""
-    def __init__(self, *ops: Value):
-        self.ops = ops
-    def get(self, env: Crucible):
-        return max(op.get(env) for op in self.ops)
+    def __init__(self, *group: Group | Value):
+        super().__init__(*group)
+    def transmute(self, env: Crucible):
+        return max(op.transmute(env) for op in self.group.list)
     def __repr__(self):
-        return f"Max({self.ops})"
-    
-class Min(Kindling):
-    """Returns the minimum value from a list of values."""
-    def __init__(self, *ops: Value):
-        self.ops = ops
-    def get(self, env: Crucible):
-        return min(op.get(env) for op in self.ops)
-    def __repr__(self):
-        return f"Min({self.ops})"
+        return f"Max({self.group.list})"
 
-class Add(Kindling):
-    """Adds two values together, optionally with a maximum limit."""
-    def __init__(self, left: Value, right: Value, max: Value | None = None):
-        self.left = left
-        self.right = right
+class Min(Groupables, Kindling):
+    """Returns the minimum value from a list of values."""
+    def __init__(self, *group: Group | Value):
+        super().__init__(*group)
+    def transmute(self, env: Crucible):
+        return min(op.transmute(env) for op in self.group.list)
+    def __repr__(self):
+        return f"Min({self.group.list})"
+
+class Add(Groupables, Kindling):
+    """Adds values together, optionally with a maximum limit."""
+    def __init__(self, group: Group, max: Value | None = None):
+        if len(group) < 2:
+            raise TinderBurn("Add requires at least two values.")
+        super().__init__(group)
         self.max = max
-    def get(self, env: Crucible):
-        if self.max is not None:
-            return min(self.max.get(env), self.left.get(env) + self.right.get(env))
-        return self.left.get(env) + self.right.get(env)
+    def transmute(self, env: Crucible):
+        result = sum(op.transmute(env) for op in self.group.list)
+        return min(result, self.max.transmute(env)) if self.max is not None else result
     def __repr__(self):
-        if self.max is not None:
-            return f"Add({self.left}, {self.right}, {self.max})"
-        return f"Add({self.left}, {self.right})"
-    
-class Subtract(Kindling):
+        return f"Add({self.group.list}, max={self.max})" if self.max is not None else f"Add({self.group.list})"
+
+class Subtract(Groupables, Kindling):
     """Subtracts the right value from the left value, optionally with a minimum limit."""
-    def __init__(self, left: Value, right: Value, min: Value | None = None):
-        self.left = left
-        self.right = right
+    def __init__(self, group: Group, min: Value | None = None):
+        if len(group) < 2:
+            raise TinderBurn("Subtract requires at least two values.")
+        super().__init__(group)
         self.min = min
-    def get(self, env: Crucible):
-        if self.min is not None:
-            return max(self.min.get(env), self.left.get(env) - self.right.get(env))
-        return self.left.get(env) - self.right.get(env)
+    def transmute(self, env: Crucible):
+        result = self.group.list[0].transmute(env)
+        for item in self.group.list[1:]:
+            result -= item.transmute(env)
+        return max(result, self.min.transmute(env)) if self.min is not None else result
     def __repr__(self):
-        if self.min is not None:
-            return f"Subtract({self.left}, {self.right}, {self.min})"
-        return f"Subtract({self.left}, {self.right})"
+        return f"Subtract({self.group.list}, min={self.min})" if self.min is not None else f"Subtract({self.group.list})"
 
 # call
 
-class Call(Kindling):
+class Call(Groupables, Kindling):
     """Calls a function in the environment with arguments."""
-    def __init__(self, name: Value, *args: Value):
-        self.name = str(name.var)
-        self.args = args
-    def get(self, env: Crucible):
-        return env.call(self.name, *[arg.get(env) for arg in self.args])
+    def __init__(self, identifier: Identifier | String, *group: Optional[Group | Value]):
+        super().__init__(*group)
+        self.identifier = identifier
+    def transmute(self, env: Crucible):
+        identifier = self.identifier.transmute(env)
+        if not callable(identifier):
+            raise TinderBurn(f"Identifier '{self.identifier}:{identifier}' is not callable.")
+        return identifier(*self.group.transmute(env))
     def __repr__(self):
-        return f"Call({self.name}, {self.args})"
+        return f"Call(identifier={self.identifier}, group={self.group})"
 
 # control flow
 
 class NoOp(Kindling):
     """A no-operation instruction that does nothing."""
-    def get(self, env: Crucible):
+    def __init__(self):
+        pass
+    def transmute(self, env: Crucible):
         pass
     def __repr__(self):
         return "NoOp()"
 
 class Goto(NoOp):
     """A no-operation instruction used to flag line numbers by name."""
-    def __init__(self, scene: Value):
-        self.var = scene.var
-    def get(self, env: Crucible):
+    def __init__(self, identifier: Lookup | String):
+        self.identifier: str = identifier.value
+    def transmute(self, env: Crucible):
         pass
     def __repr__(self):
-        return f"Goto({self.var})"
+        return f"Goto({self.identifier})"
 
 class Stop(Kindling):
     """Stops the execution of the Tinder."""
-    def get(self, env: Crucible):
+    def __init__(self):
+        pass
+    def transmute(self, env: Crucible):
         raise Yield() # causes a yield
     def __repr__(self):
         return "Stop()"
 
 class Jump(Kindling):
     """Jumps to a line number based on a condition."""
-    def __init__(self, goto: Lookup | Number, condition: Comparison | Value | None = None):
-        self.goto = Lookup(goto.var) if isinstance(goto, String) else goto
+    def __init__(self, goto: String | Lookup | Number, condition: Comparison | Identifier | None = None):
+        self.goto = Lookup(goto.value) if isinstance(goto, String) else goto
         self.condition = condition
-    def get(self, env: Crucible):
-        if self.condition is None:
-            raise JumpTo(self.goto.get(env))
-        elif self.condition.get(env):
-            raise JumpTo(self.goto.get(env))
+    def transmute(self, env: Crucible):
+        condition = self.condition.transmute(env) if self.condition else True
+        line = self.goto.transmute(env)
+        if not isinstance(line, (float,int)):
+            raise TinderBurn(f"Jump target '{self.goto}' must be a line number, got {line}.")
+        if not condition:
+            return
+        raise JumpTo(line)
     def __repr__(self):
-        return f"Jump({self.goto}, {self.condition})"
+        return f"Jump(goto={self.goto}, condition={self.condition})"
 
 # Tinder
 
@@ -404,8 +468,10 @@ class Tinder:
     the next line of execution or raises an exception if an error occurs.
     """
     instructions: List[Kindling]
-    def __init__(self, *instructions: Kindling ):
+    jumpTable: Dict[str, int]
+    def __init__(self, instructions: List[Kindling] ):
         self.instructions = instructions
+        self.jumpTable = {inst.identifier: i for i, inst in enumerate(self.instructions) if isinstance(inst, Goto)}
     def __setitem__(self, index: int, instruction: Kindling):
         self.instructions[index] = instruction
     def __getitem__(self, index: int) -> Kindling:
@@ -413,17 +479,14 @@ class Tinder:
     def __len__(self) -> int:
         return len(self.instructions)
     def __repr__(self) -> str:
-        return f"Tinder[{len(self)} lines](\n\t{'\n\t'.join(repr(inst) for inst in self.instructions)}\n)"
-    def getJumpTable(self) -> dict[str, int]:
-        """
-        Returns a dictionary mapping Goto labels to their line numbers.
-        This is useful for resolving jumps by name.
-        """
-        return {inst.var: i for i, inst in enumerate(self.instructions) if isinstance(inst, Goto)}
+        list = '\n\t'.join(repr(inst) for inst in self.instructions)
+        return f"Tinder[{len(self)} lines](\n\t{list}\n)"
+    def writeJumpTable(self, env: Crucible):
+        env.update(self.jumpTable)
     def run(self, line: int, env: Crucible):
         while line < len(self.instructions):
             try:
-                self.instructions[line].get(env)
+                self.instructions[line].transmute(env)
                 line += 1
             except JumpTo as j:
                 line = j.line
@@ -434,111 +497,34 @@ class Tinder:
                 raise TinderBurn(f"Error at line {line+1}: {e}") from e
         return line
 
+def getAllSymbols():
+    """
+    Returns a list of all registered symbols in the Tinderstarter.
+    This is useful for introspection or testing purposes.
+    """
+    return [obj for _, obj in inspect.getmembers(sys.modules[__name__], lambda x: inspect.isclass(x) and issubclass(x, Symbol) and not inspect.isabstract(x))]
 
-class Comment(Lexeme):
-    """Base class for comments."""
-    @property
-    def value(self) -> str:
-        """Return the comment text."""
-        return self.text
+class Tinderstarter(Firestarter):
+    def __init__(self):
+        super().__init__(None, True)
 
-class Number(Lexeme):
-    @property
-    def value(self) -> int:
-        """Return the numeric value of the lexeme."""
-        return int(self.text)
+        classes = getAllSymbols()
+        # Auto-register all classes that are subclasses of Symbol
+        for obj in classes:
+            self.register(obj)
+        self.macro(Write, None, Lookup("OUTPUT"), str, Number(1))  # Alias write with newline
+        self.macro(Input, None, Lookup("INPUT"), str) # Alias input with prompt
 
-class String(Lexeme):
-    @property
-    def value(self) -> str:
-        """Return the string value of the lexeme."""
-        return self.text[1:-1]  # Remove quotes
-
-class Identifier(Lexeme):
-    @property
-    def value(self) -> str:
-        """Return the identifier value."""
-        return self.text
-
-class Function(Lexeme):
-    @property
-    def value(self) -> str:
-        """Return the function name without the backtick."""
-        return self.text[1:]  # Remove the leading backtick
-    
-class Redirect(Lexeme):
-    @property
-    def value(self) -> str:
-        """Return the redirection identifier without the '@'."""
-        return self.text[1:]  # Remove the leading '@'
-
-class Nil(Lexeme):
-    @property
-    def value(self) -> None:
-        """Return None for the nil lexeme."""
-        return None
-
-NUMBER_RE = re.compile(r'-?(?:\d+(\.\d*)?|\.\d+)')  # Matches floats, including negative numbers
-REDIRECT_RE = re.compile(r'@([a-zA-Z_][a-zA-Z0-9_]*)')  # Matches redirection identifiers starting with '@'
-FUNC_RE = re.compile(r'`[a-zA-Z_][a-zA-Z0-9_]*')  # Matches function names starting with a backtick
-NIL_RE = re.compile(r'Nil')  # Matches the keyword 'nil'
-#LINE_COMMENT_RE = re.compile(r'//[^\r\n]*')
-#BLOCK_COMMENT_RE = re.compile(r'/\*.*?\*/', re.DOTALL)
-STRING_RE = re.compile(r'(".*"|\'[^\']*\')')  # Matches double or single quoted strings
-IDENTI_RE = re.compile(r'[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*')  # Matches identifiers
-
-grammar = Grammar(IGNORE_WHITESPACE)
-grammar.register(String, match=[STRING_RE])
-grammar.register(Number, match=[NUMBER_RE])
-grammar.register(Identifier, "Keyword", match=["call", "write", "set", "input", "jump", "#", "stop"])
-grammar.register(Identifier, match=[IDENTI_RE])
-grammar.register(Function, match=["call", "add", "subtract", "max", "min", "less", "greater", "equal", "and", "or", "not", "if", "in"])
-grammar.register(Redirect, match=[REDIRECT_RE])
-#grammar.register(Comment, match=[LINE_COMMENT_RE, BLOCK_COMMENT_RE])
-grammar.register(Number, match=["True", "False"], sub = [1, 0]) # Treat True as 1 and False as 0
-grammar.register(Nil, match=["Nil"], sub=[None])  # Treat Nil as None
-
-
-# this is all super ungraceful, ugly development stuff
-# get the Tinder grammar
-tinder = Firestarter(grammar)
-# register discardable expressions
-tinder.register(Tinder)
-
-tinder.register(Call)
-tinder.register(Write)
-tinder.register(Input)
-tinder.register(Set)
-
-tinder.register(Jump)
-tinder.register(Goto)
-tinder.register(Stop)
-
-tinder.register(Add)
-tinder.register(Subtract)
-tinder.register(Min)
-tinder.register(Max)
-tinder.register(From)
-
-tinder.register(Less)
-tinder.register(Greater)
-tinder.register(In)
-tinder.register(And)
-tinder.register(Or)
-tinder.register(Not)
-
-tinder.register(Lookup)
-tinder.register(Redirect)
-tinder.register(String)
-tinder.register(Number)
-
-tinder.macro(Call, "function")
-tinder.macro(Number, "True", Number(1))
-tinder.macro(Number, "False", Number(0))
-tinder.macro(Write, None, ". .", Number(1))  # alias write with newline
-tinder.discard("ws", "ws?")
-
-with open("./scripts/login.tinder", "r") as f:
-    script = f.read()
-
-script = tinder.compile(script)
+    def compile(self, source: str) -> Tinder:
+        version = source[:source.find("\n")]
+        if not version.startswith("v"):
+            raise TinderBurn("Tinder scripts must start with a version line (e.g., 'v1').")
+        source = source[len(version):]
+        if not source.endswith('\n'):
+            source += '\n'
+        if version not in GRAMMARS:
+            raise TinderBurn(f"Unsupported Tinder version: {version}. Available versions: {list(GRAMMARS.keys())}")
+        self.grammar = GRAMMARS[version]
+        ast = self.parseTokens(source)
+        #ast.pretty_print()
+        return super().compile(source, Tinder)
