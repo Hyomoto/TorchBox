@@ -27,6 +27,14 @@ class Match:
         for child in self.children:
             yield from child.walk()
 
+    def lastMatch(self) -> "Match":
+        """Return a chain of matches leading to the last child match."""
+        output = ""
+        for node in self.walk():
+            if node.rule.identity is not None:
+                output += f"-> {node.rule.identity}"
+        return output
+
     def slice(self, tokens: str) -> str:
         """Return the matched text from the input token stream."""
         return tokens[self.start:self.end] if self.start < self.end else ""
@@ -288,11 +296,11 @@ class RuleAndPredicate(RulePredicate):
     """A rule that succeeds if the inner rule matches, but consumes no tokens."""
     def _consume(self, tokens: str, pos: int = 0, ignore: re.Pattern | None = None) -> Match:
         try:
-            self.rule.consume(tokens, pos, ignore)  # Try matching inner rule, never ignore tokens all are considered significant
+            match = self.rule.consume(tokens, pos, ignore)  # Try matching inner rule, never ignore tokens all are considered significant
             # If successful, return a zero-width match at pos
             return Match(self, pos, pos)
         except MatchError as e:
-            raise MatchError(pos, self, [e])
+            raise MatchError(pos, self, [e], [match])
 
     def __repr__(self):
         return super().__repr__().replace("%s", repr(self.rule))
@@ -302,12 +310,11 @@ class RuleNotPredicate(RulePredicate):
     """A rule that succeeds if the inner rule does not match, but consumes no tokens."""
     def _consume(self, tokens: str, pos: int = 0, ignore: re.Pattern | None = None) -> Match:
         try:
-            self.rule.consume(tokens, pos, ignore)
-        except MatchError:
+            match = self.rule.consume(tokens, pos, ignore)
+        except MatchError as e:
             # If it fails, return a zero-width match at pos
-            return Match(self, pos, pos)
-        raise MatchError(pos, self,
-                         None)  # If the inner rule matches, raise an error
+            return Match(self, pos, pos, lasterror = e)
+        raise MatchError(pos, self, None, [match])  # If the inner rule matches, raise an error
 
     def __repr__(self):
         return super().__repr__().replace("%s", repr(self.rule))
@@ -415,13 +422,14 @@ class GrammarParseError(GrammarError):
     """
     Raised when a grammar fails to parse.
     """
-    def __init__(self, index: int, line: int, column: int, token_slice: str, exception: MatchError, macros: Dict[str, str]):
+    def __init__(self, index: int, line: int, column: int, token_slice: str, exception: MatchError, macros: Dict[str, str], hoists: Set[str]):
         self.index = index
         self.line = line
         self.column = column
         self.tokens = token_slice
         self.exception = exception
         self.macros = macros
+        self.hoists = hoists
 
     def __str__(self):
         def backup(match: MatchError) -> MatchError | None:
@@ -433,6 +441,13 @@ class GrammarParseError(GrammarError):
             return match
         # Build the base header
         last = self.exception.lastError()
+        matched = None
+        if last.matched:
+            matched = ""
+            for node in last.matched[-1].walk():
+                if node.rule.identity is not None and node.rule.identity not in self.hoists:
+                    matched += f" -> {node.rule.identity}"
+            matched = matched[4:] # remove leading ' -> '
         expect = None
         unexpected = False
         if isinstance(last.expected, RuleNotPredicate):
@@ -477,6 +492,8 @@ class GrammarParseError(GrammarError):
             f"{snippet}\n"
             f"{pointer_line}"
         )
+        if matched:
+            output += f"\nMatched: {matched}"
         if expect:
             if unexpected:
                 output += f"\nFound {expect}, which is invalid here."
@@ -659,7 +676,7 @@ class Grammar:
             if matches and matches[-1].error:
                 e = matches[-1].error.lastError().children[0] # get the last error from the last match
             col, row, line = getLineInfo(tokens, e)
-            raise GrammarParseError(pos, row, col, line, e, self.macros)
+            raise GrammarParseError(pos, row, col, line, e, self.macros, self.hoist)
         if flatten:
             flattened = []
             for match in matches:

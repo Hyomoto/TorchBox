@@ -1,16 +1,52 @@
-from tinder import Tinderstarter, TinderBurn
-from tinder.crucible import Crucible
+from game import instantiate_game, userMemory
+from tinder.crucible import Crucible, NO_SHADOWING
+from torchbox import Message, ConnectionHandler, Shutdown
+from constants import RESET
+import copy
+
+class LocalUser(ConnectionHandler):
+    def __init__(self, queue, logger):
+        super().__init__(None, queue, logger)
+        env = Crucible(NO_SHADOWING).update(copy.copy(userMemory))
+        env["SCENE"] = "login"
+        self.userEnv = env
+        self.localEnv = None
+        self.change = True
+
+    def login(self):
+        self.queue.put(Message(self, "__LOGIN__"))
+
+    def receive(self):
+        pass
+
+    def send(self, output: str, _input = None):
+        print(output)
+        if _input:
+            _input = input(_input + " ")
+            self.queue.put(Message(self, _input))
+
+    def close(self):
+        raise Shutdown()
+
+    def __repr__(self):
+        return f"<LocalUser>"
+
+def debug():
+    torchbox = instantiate_game(debug = True)
+    torchbox.compile("./scripts/login.v1.tinder")
+    torchbox.compile("./scripts/creation/start.v1.tinder")
+    local = LocalUser(torchbox.queue, torchbox.log)
+    local.userEnv["SCENE"] = "login"
+    local.login()
+    torchbox.run()
+    print(RESET)
 
 def main():
-    with open("./scripts/login.tinder", "r") as f:
-        input = f.read()
-    tinder = Tinderstarter()
-    script = tinder.compile(input)
-    #crucible = Crucible()
-    print(script)
-    #line = script.run(0, crucible)
-    #print(line)
-    #print(crucible.variables)
+    torchbox = instantiate_game()
+    local = LocalUser(torchbox.queue, torchbox.log)
+    local.login()
+    torchbox.run()
+    print(RESET)
 
 if __name__ == "__main__":
-    main()
+    debug()

@@ -1,0 +1,19 @@
+
+# choose_gender
+    input "`3And your gender? (`11M`3|`11F`3) [`11M`3]:"
+    set USER.gender `in `or INPUT "m" Nil "m" "f"
+    jump choose_gender `not USER.gender
+    call debug USER.skills
+    write ""
+    set m "`11Then don't be wearing any skirts around here, lad.`0"
+    set f "`11Ah, pardon my manners, miss.`0"
+    write @INPUT
+    write "\n`1One last thing, you wouldn't have any particular skills, would you?\n"
+    write "`11(`6F`11)ighting with a sword"
+    write "`11(`6M`11)agic and spells"
+    write "`11(`6T`11)hievery and stealth"
+    input "`3Choose wisely: (`6F`3|`6M`3|`6T`3):"
+
+# fail
+    write "You are not welcome here, stranger.`0"
+    set SCENE "exit"

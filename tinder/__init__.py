@@ -82,18 +82,26 @@ Author: Devon "Hyomoto" Mullane, 2025
 
 License: MIT License
 """
-from importlib.resources import files as import_files
+from importlib.resources import files as import_files, files
 from typing import Tuple, Type, Dict, List, Optional, Any
 from .crucible import Crucible
 from abc import ABC, abstractmethod
 from firestarter import Firestarter, FirestarterError, Symbol, Value as AbstractValue
-from firestarter.grammar import make_grammar_from_file, RuleIgnore, AST
+from firestarter.grammar import make_grammar_from_file, RuleIgnore, Grammar
 import inspect
 import sys
 
-GRAMMARS = {
-    "v1": make_grammar_from_file(import_files("tinder").joinpath("tinder.peg"), RuleIgnore.SPACES)
-}
+def getGrammars() -> Dict[str, Grammar]:
+    traverse = files("tinder")
+    output = {}
+    for entry in traverse.iterdir():
+        if not entry.is_file() or not entry.name.endswith(".peg"):
+            continue
+        file = entry.name[:-4]  # Remove the .peg extension
+        output[file] = make_grammar_from_file(entry, RuleIgnore.SPACES)
+    return output
+
+GRAMMARS = getGrammars()
 # exceptions
 
 class TinderBurn(Exception):
@@ -312,10 +320,10 @@ class And(Groupables,Comparison):
 
 class Or(Groupables,Comparison):
     """Returns the first value that is Truthy, or None."""
-    def __init__(self, group: Group | Value):
+    def __init__(self, *group: Group | Value):
         if len(group) < 2:
             raise TinderBurn("And requires at least two values.")
-        super().__init__(group)
+        super().__init__(*group)
     def transmute(self, env: Crucible):
         for item in self.group.list:
             value = item.transmute(env)
@@ -338,7 +346,7 @@ class Not(Comparison):
 
 class Less(Comparison):
     """Checks if the left value is less than the right value."""
-    def __init__(self, left: Value, right: Value):
+    def __init__(self, left: Kindling, right: Kindling):
         self.left = left
         self.right = right
     def transmute(self, env: Crucible):
@@ -348,7 +356,7 @@ class Less(Comparison):
 
 class Greater(Comparison):
     """Checks if the left value is greater than the right value."""
-    def __init__(self, left: Value, right: Value):
+    def __init__(self, left: Kindling, right: Kindling):
         self.left = left
         self.right = right
     def transmute(self, env: Crucible):
@@ -520,11 +528,7 @@ class Tinderstarter(Firestarter):
         self.macro(Input, None, Lookup("INPUT"), str) # Alias input with prompt
         self.macro(NoOp, "Newline")
 
-    def compile(self, source: str) -> Tinder:
-        version = source[:source.find("\n")]
-        if not version.startswith("v"):
-            raise TinderBurn("Tinder scripts must start with a version line (e.g., 'v1').")
-        source = source[len(version):]
+    def compile(self, source: str, version: str) -> Tinder:
         if not source.endswith('\n'):
             source += '\n'
         if version not in GRAMMARS:

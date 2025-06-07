@@ -1,16 +1,26 @@
-from torchbox import TorchBox, Ember
+from typing import Tuple, Callable, Optional
+from torchbox import TorchBox, Ember, ConnectionHandler, SocketHandler, Shutdown
 from torchbox.realm import Realm, User
+from firestarter import FirestarterError
 from tinder import Tinderstarter, Tinder, TinderBurn
 from tinder.crucible import Crucible, PROTECTED, READ_ONLY, NO_SHADOWING
+from torchbox.logger import Logger, Log, Critical, Warning, Info, Debug
 from constants import RESET
 from memory.protected import map as protectedMemory
 from memory.globals import map as globalMemory
 from memory.user import map as userMemory
-from memory.user import data as userData
+from memory.user import UserData
+import threading
+import queue
+import socket
 import copy
+import time
+import os
+
+QueueEmpty = queue.Empty
 
 def get_file(path: str):
-    with open("./scripts/" + path, "r") as f:
+    with open(path, "r") as f:
         return f.read()
 
 realm = Realm("Socks & Sorcery Realm", "A realm for Socks & Sorcery users.")
@@ -29,47 +39,171 @@ loginAPI = {
     "check_password": lambda user, password: user.checkPassword(password),
     "set_password": lambda user, password: user.setPassword(password),
     "set_nickname": lambda user, nickname: user.setNickname(nickname),
-    "new_user": lambda username, password: realm.addUser(User(username, password, userData)),
+    "new_user": lambda username, password: realm.addUser(User(username, password, UserData())),
+}
+baseApi = {
+    "debug" : lambda x: print(f"[debug] {x}"),
+    "length" : lambda x: len(x),
 }
 protectedMemory.update({"login" : loginAPI})
-protectedMemory.update({"debug" : lambda x: print(f"[debug] {x}")})
+protectedMemory.update(baseApi)
+
+def getAllScripts():
+    scripts = []
+    for root, _, files in os.walk("./scripts"):
+        for file in files:
+            if file.endswith(".tinder"):
+                scripts.append(os.path.join(root, file))
+    return scripts
+
+class SocketUser(SocketHandler):
+    def __init__(self, client: socket.socket, queue: queue.Queue, logger: Callable = None):
+        super().__init__(client, queue, logger)
+        env = Crucible(NO_SHADOWING).update(copy.copy(userMemory))
+        env["SCENE"] = "login"
+        self.userEnv = env
+        self.localEnv = None
+        self.change = True
 
 class Game(TorchBox):
-    def __init__(self):
-        super().__init__()
-        self.add("login", tinderstarter.compile(get_file("login.tinder")))
+    def __init__(self, realm: Realm, env: Crucible):
+        super().__init__(realm, env, Logger(length = 255, output="./logs/torchbox.log"))
+        self.scenes = {}
         # build the memory environment
-        self.env = Crucible(PROTECTED, parent=Crucible(READ_ONLY).update(protectedMemory)).update(globalMemory)
+        self.shared = Crucible(PROTECTED, parent=Crucible(READ_ONLY).update(protectedMemory)).update(globalMemory)
+        self.env = None
+        self.running = True
+        self.debug = False
 
-    def run(self, entry: str):
-        user = Crucible(NO_SHADOWING, parent = self.env ).update(copy.copy(userMemory))
-        local = Crucible(NO_SHADOWING, parent = user )
-        user["LINE"] = 0
-        user["SCENE"] = entry
-        self.scenes[user["SCENE"]].writeJumpTable(local)
-        #print(self.scenes[user["SCENE"]])
-        while True:
-            line = user["LINE"]
-            script = self.scenes[user["SCENE"]]
-            
-            if not script:
-                raise Ember(f"Scene '{entry}' not found.")
-            
+    def run(self):
+        def gameLoop():
+            queue = self.queue
+            while self.running:
+                try:
+                    message = queue.get(timeout=1) # blocking
+                    while True:
+                        user: SocketUser = message.user
+                        scene = user.userEnv["SCENE"]
+                        script = self.get(scene)
+                        env = user.userEnv
+                        if user.change:
+                            user.change = False
+                            env.parent = self.shared
+                            if not user.localEnv or "SAVE_LOCAL" not in user.localEnv:
+                                user.localEnv = Crucible(NO_SHADOWING, parent=user.userEnv)
+                            env["LINE"] = 0
+                            script.writeJumpTable(user.localEnv)
+                        env["INPUT"] = message.content
+                        line = env["LINE"]
+                        line = script.run(line, user.localEnv)
+                        self.env = user.localEnv
+                        if env["SCENE"] == "exit":
+                            user.send("Goodbye!\r\n")
+                            user.close()
+                        output = self.substitute(env["OUTPUT"].replace("\\n", "\n"))
+                        input = self.substitute(env["INPUT"].replace("\\n", "\n"))
+                        env["OUTPUT"] = ""
+                        env["LINE"] = line
+                        if env["SCENE"] != scene:
+                            user.change = True
+                            continue
+                        user.send(output, input)
+                        break
+                except (Shutdown, EOFError):
+                    self.running = False
+                except TinderBurn as e:
+                    error = f"Error in scene '{user.userEnv['SCENE']}': {e}"
+                    self.log(Warning(error))
+                    user.send(error + "\n")
+                    user.close() # close the connection on error
+                except QueueEmpty:
+                    continue
+                except Exception as e:
+                    self.log(Critical(f"{e.__class__.__name__}: {e}"))
+                    self.log(Critical("Unhandled exception, shutting down server."))
+                    self.running = False
+                    raise e
+        
+        threading.Thread(target=gameLoop).start()
+        try:
+            while self.running:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            self.running = False
+            print("\n")
+            self.log(Info("Server shutting down due to KeyboardInterrupt."))
+        self.logger.write(clear=True)
+
+    def getHandler(self, client, of: str) -> ConnectionHandler:
+        match of:
+            case "socket":
+                return SocketUser(client, self.queue, self.log)
+        super().getHandler(client, of)
+
+    def compile(self, filepath: str):
+        """Compile a script and add it to the game."""
+        keyname, filename = os.path.split(filepath)
+        filename = filename.split(".")
+        keyname = os.path.normpath(keyname).replace("\\", "/").removeprefix("scripts")
+        keyname = keyname.removeprefix("/")
+        keyname += "/" if keyname else ""
+        version = filename[-2]
+        script = get_file(filepath)
+        try:
+            tinder = tinderstarter.compile(script, version)
+        except FirestarterError as e:
+            raise Ember(f"Error compiling '{filepath}':\n{e}")
+        self.add(keyname + filename[0], tinder)
+    
+    def add(self, name: str, scene: Tinder):
+        self.scenes[name] = scene
+        return self
+
+    def get(self, name: str):
+        if name in self.scenes:
+            return self.scenes[name]
+        raise ValueError(f"Tinder '{name}' not found.")
+
+def instantiate_game(debug: bool = False):
+    """
+    Instantiate the game, compile all scripts, and return the game instance.
+    
+    If debug is True, script compilation is skipped.
+    """
+    game = Game(realm, protectedMemory)
+    game.debug = debug
+    if not debug:
+        scripts = getAllScripts()
+        game.log(Info(f"Found {len(scripts)} scripts."))
+        count = 0
+        game.logger.show = False
+        for script in scripts:
             try:
-                line = script.run(line, local)
-            except TinderBurn as e:
-                print(f"Error in scene '{user['SCENE']}': {e}")
-                break
-            print(self.substitute(user["OUTPUT"], user, self.macros).replace("\\n", "\n"))
+                game.compile(script)
+                count += 1
+            except Ember as e:
+                text = str(Warning(e))
+                print(f"{text[:text.index(":")]}{RESET}")
+                game.log(Warning(e))
+        game.logger.show = True
+        game.log(Info(f"Compiled {count} scripts."))
+    return game
 
-            if user["SCENE"] == "exit":
-                print("Exiting game.")
-                break
-            
-            user["INPUT"] = input(self.substitute(user["INPUT"], user, self.macros).replace("\\n", "\n") + f" {RESET}").lower()
-            user["OUTPUT"] = ""
-            user["LINE"] = line
-
+def start_server(torchbox: TorchBox):
+    torchbox.listen()
+    try:
+        torchbox.run()
+    except Exception:
+        torchbox.logger.log(Critical("Unhandled exception, shutting down server."))
+        torchbox.logger.write(clear=True)
+        exit(1)
+    
 if __name__ == "__main__":
-    game = Game()
-    game.run("login")
+    try:
+        game = instantiate_game()
+    except Ember as e:
+        print(e)
+        exit(1)
+    start_server(game)
+    
+    #game.run("login")

@@ -324,7 +324,6 @@ class Firestarter:
                 else:
                     raise FirestarterError(f"Argument {args[j]} does not match expected type {p} for {op.__name__}.")
                 j += 1
-            
             return op(*result)
 
         def getPattern_unchecked(op, pattern, args):
