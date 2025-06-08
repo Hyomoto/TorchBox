@@ -1,0 +1,23 @@
+"\nWelcome to the Coin Flip Game!"
+"Will fortune favour you today?"
+# start
+input "Pick heads or tails (h/t):"
+set CHOICE to INPUT or "h"
+set VALID ["h", "t", "heads", "tails"]
+jump invalid_choice if not (CHOICE in VALID)
+
+set RESULT random.choice(["heads", "tails"])
+"Flipping the coin..."
+set WIN ((CHOICE in ["h", "heads"]) and RESULT == "heads") or ((CHOICE in ["t", "tails"]) and RESULT == "tails")
+jump win if WIN
+
+"Unlucky! The coin landed on [[RESULT]]."
+set SCENE "exit"
+stop
+# win
+"Congratulations! You guessed [[RESULT]] and won!"
+set SCENE "exit"
+stop
+# invalid_choice
+"That's not a valid choice. Please pick heads or tails."
+jump start

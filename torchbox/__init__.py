@@ -93,7 +93,7 @@ class SocketHandler(ConnectionHandler):
     client: socket.socket
     def __init__(self, client: socket.socket, queue: queue.Queue, log: Callable = None):
         super().__init__(client, queue, log)
-    
+
     def login(self):
         self.queue.put(Message(self, "__LOGIN__"))
 

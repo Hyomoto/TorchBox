@@ -21,9 +21,8 @@ class LocalUser(ConnectionHandler):
 
     def send(self, output: str, _input = None):
         print(output)
-        if _input:
-            _input = input(_input + " ")
-            self.queue.put(Message(self, _input))
+        _input = input((_input if _input else "") + " ")
+        self.queue.put(Message(self, _input))
 
     def close(self):
         raise Shutdown()
@@ -33,10 +32,9 @@ class LocalUser(ConnectionHandler):
 
 def debug():
     torchbox = instantiate_game(debug = True)
-    torchbox.compile("./scripts/login.v1.tinder")
-    torchbox.compile("./scripts/creation/start.v1.tinder")
+    torchbox.compile("./scripts/coin.v2.tinder")
     local = LocalUser(torchbox.queue, torchbox.log)
-    local.userEnv["SCENE"] = "login"
+    local.userEnv["SCENE"] = "coin"
     local.login()
     torchbox.run()
     print(RESET)

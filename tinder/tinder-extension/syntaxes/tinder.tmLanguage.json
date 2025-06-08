@@ -7,7 +7,7 @@
     },
     {
       "name": "keyword.control",
-      "match": "^\\s*(write|input|set|call|jump|stop)\\b"
+      "match": "^\\s*(input|set|call|jump|stop)\\b"
     },
     {
       "name": "variable.other.constant",
@@ -15,7 +15,7 @@
     },
     {
       "name": "support.function",
-      "match": "`(add|subtract|max|min|less|greater|in|from|and|or|if|not|call)\\b"
+      "match": "\\b(?:and|or|not|if|in|to)\\b"
     },
     {
       "name": "invalid.illegal",

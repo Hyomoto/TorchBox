@@ -1,5 +1,6 @@
 from typing import Callable, Type, Dict, Set, Tuple, List, Any
 from abc import ABC, abstractmethod
+import copy
 import re
 
 class Match:
@@ -134,6 +135,10 @@ class Rule(ABC):
         """
         pass
 
+    def duplicate(self) -> "Rule":
+        """Create a duplicate of this rule."""
+        return copy.deepcopy(self)
+
     def __eq__(self, other):
         return isinstance(other, Rule) and self.__class__ == other.__class__
 
@@ -245,9 +250,6 @@ class RuleOneOrMore(RuleSingle):
         if not matches:
             raise MatchError(pos, self)
         return Match(self, start, pos, matches, lasterror = error)
-
-    def visit(self, matches, tokens: str):
-        """Visit all matches and return a list of their tokens."""
 
     def __repr__(self):
         return super().__repr__().replace("%s", repr(self.rule))
@@ -373,7 +375,7 @@ class RuleChoice(RuleMultiple):
 
 
 class AST:
-    def __init__(self, matches: List[Match], tokens: str):
+    def __init__(self, lineNumbers: List[int], matches: List[Match], tokens: str):
         """
         Represents an abstract syntax tree (AST) generated from parsed tokens.
 
@@ -381,6 +383,7 @@ class AST:
         the original source tokens. This makes the AST self-contained, supporting
         traversal, transformation, and pretty-printing with context-sensitive slicing.
         """
+        self.lineNumbers = lineNumbers
         self.matches = matches
         self.tokens = tokens
 
@@ -519,11 +522,12 @@ class GrammarMissingResolve(GrammarError):
         super().__init__(f"Rule '{identifier}' is missing from the grammar.")
         self.identifier = identifier
 
-class RuleIgnore:
+class Flags:
     NONE = 0x00
-    SPACES = 0x01
-    NEWLINE = 0x02
-    WHITESPACE = SPACES | NEWLINE
+    IGNORE_SPACE_AND_TAB = 0x01
+    IGNORE_NEWLINE = 0x02
+    IGNORE_WHITESPACE = IGNORE_SPACE_AND_TAB | IGNORE_NEWLINE
+    FLATTEN = 0x04
 
 IGNORABLE = [
     None,
@@ -539,13 +543,15 @@ TOKEN_RE = re.compile(
 
 class Grammar:
     """A grammar definition for the Firestarter parser."""
-    def __init__(self, ignore: int = RuleIgnore.NONE):
+    def __init__(self, flags: int = Flags.NONE):
         self.rule: Rule | None = None
         self.rules: Dict[str, Rule] = {}
         self.dirty = False
-        self.ignore = ignore  # bitmask for ignored lexemes (e.g. whitespace, newlines)
+        self.flags = flags  # bitmask for ignored lexemes (e.g. whitespace, newlines)
         self.discard = set()  # rules to discard from the grammar
         self.hoist = set() # rules that should be hoisted out
+        self.merge = set() # rules that should be merged
+        self.conditional = set() # rules that should be conditionally hoisted
         self.macros: Dict[str, str] = {} # used for parsing failures to provide better error messages
 
     def register(self, **kwargs: Rule | str):
@@ -562,29 +568,7 @@ class Grammar:
                 self.rule = rule # first registered rule becomes the root
         self.dirty = True
         return self
-
-    def set_macro(self, **kwargs: str):
-        """Register a macro for a rule identifier."""
-        for identifier, text in kwargs.items():
-            if identifier not in self.rules:
-                raise GrammarError(f"Macro '{identifier}' references an undefined rule.")
-            if identifier in self.macros:
-                raise GrammarError(f"Macro '{identifier}' already defined in grammar.")
-            self.macros[identifier] = text
-        return self
-
-    def hoist_rules(self, *rules: str):
-        """Mark rules to be hoisted in the grammar during flattening of the AST."""
-        for rule in rules:
-            self.hoist.add(rule)
-        return self
-
-    def discard_rules(self, *rules: str):
-        """Mark rules to be discarded from the grammar during flattening of the AST."""
-        for rule in rules:
-            self.discard.add(rule)
-        return self
-
+    
     def resolve(self):
         """Resolve all rule references in the grammar."""
         def handle_rule(rule, callback):
@@ -625,20 +609,29 @@ class Grammar:
                 toVisit.append((identifier, base))
         return self
 
-    def parse(self, tokens: str, flatten: bool = True) -> AST:
+    def parse(self, tokens: str) -> AST:
+        def calculateLine(tokens: str, pos: int) -> Tuple[int, int]:
+            row = tokens.count('\n', 0, pos) + 1
+            column = pos - tokens.rfind('\n', 0, pos)
+            return row, column
+
         def getLineInfo(tokens: str, error: MatchError):
             # traverse match error to find the last index that failed to match
             pos = error.lastIndex()
+            row, column = calculateLine(tokens, pos)
             lines = tokens.split('\n')
-            row = tokens.count('\n', 0, pos) + 1
             line = lines[row - 1] if row <= len(lines) else ""
-            line_start = tokens.rfind('\n', 0, pos) + 1
-            column = pos - line_start + 1
             return column, row, line
 
         def do_flatten(node: Match) -> List[Match]:
             """Flatten AST by discarding scaffolding."""
+            if node.rule.identity in self.merge:
+                node.children[0].rule = node.children[0].rule.duplicate()
+                node.children[0].rule.identity = node.rule.identity
+                return node.children[0]
+            
             children = []
+
             for child in node.children:
                 child = do_flatten(child)
                 if child:
@@ -649,9 +642,12 @@ class Grammar:
                 
             if node.rule.identity is None or node.rule.identity in self.hoist:
                 return children
-
+            
             if node.rule.identity in self.discard:
                 return []
+            
+            if node.rule.identity in self.conditional and len(children) == 1:
+                return children[0]
 
             node.children = children
 
@@ -664,7 +660,7 @@ class Grammar:
             self.resolve()
         pos = 0
         matches: List[Match] = []
-        ignore = IGNORABLE[self.ignore]
+        ignore = IGNORABLE[self.flags & 0x03]
         try:
             while pos < len(tokens):
                 match = self.rule.consume(tokens, pos, ignore)
@@ -677,7 +673,7 @@ class Grammar:
                 e = matches[-1].error.lastError().children[0] # get the last error from the last match
             col, row, line = getLineInfo(tokens, e)
             raise GrammarParseError(pos, row, col, line, e, self.macros, self.hoist)
-        if flatten:
+        if self.flags & Flags.FLATTEN:
             flattened = []
             for match in matches:
                 flat = do_flatten(match)
@@ -686,16 +682,20 @@ class Grammar:
                 else:
                     flattened.append(flat)
             matches = flattened
-        return AST(matches, tokens)
+            lineNumbers = []
+            for line in matches:
+                line, _ = calculateLine(tokens, line.start)
+                lineNumbers.append(line)
+        return AST(lineNumbers, matches, tokens)
 
     def __repr__(self):
         rules_repr = "\n".join(f"{k}: {v}" for k, v in self.rules.items())
         return f"Grammar(\n{rules_repr}\n)"
 
-PEG = Grammar(RuleIgnore.SPACES).register(
+PEG = Grammar(Flags.IGNORE_SPACE_AND_TAB | Flags.FLATTEN).register(
         Grammar=RuleOneOrMore(RuleChoice("Rule", "Newline","Comment")),
         Rule=RuleAll(RuleChoice("Strict","Identifier"), "Priority", "Expression", RuleOptional("Comment")),
-        Priority=RuleChoice(RuleString("<-"), RuleString("--"), RuleString("->")),
+        Priority=RuleChoice(RuleString("<-"), RuleString("--"), RuleString("->"), RuleString("<>"), RuleString("~>")),
         Comment=RuleAll(RuleString("#"), RulePattern(re.compile(r'[^\n]*'))),
         Expression="Choice",
         Choice=RuleAll("Sequence", RuleZeroOrMore(RuleAll(RuleString("/"), "Sequence"))),
@@ -711,9 +711,11 @@ PEG = Grammar(RuleIgnore.SPACES).register(
         Strict=RuleAll(RuleString("["), "Identifier", RuleString("]")),
         Identifier=RulePattern(re.compile(r'[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*')),
         Newline=RulePattern(re.compile(r'\n|\r\n|\r'))
-    ).resolve().discard_rules("Newline")
+    ).resolve()
+PEG.discard.add("Comment")
+PEG.discard.add("Newline")
 
-def make_grammar_from_file(file_path: str, ignore: int = RuleIgnore.NONE) -> Grammar:
+def make_grammar_from_file(file_path: str, flags: int = Flags.NONE) -> Grammar:
     """
     Load a grammar from a file.
 
@@ -722,9 +724,9 @@ def make_grammar_from_file(file_path: str, ignore: int = RuleIgnore.NONE) -> Gra
     """
     with open(file_path, 'r') as f:
         text = f.read()
-    return make_grammar(text, ignore)
+    return make_grammar(text, flags)
 
-def make_grammar(text: str, ignore: int = RuleIgnore.NONE) -> Grammar:
+def make_grammar(text: str, flags: int = Flags.NONE) -> Grammar:
     """
     Load a grammar from a string definition.
 
@@ -734,7 +736,9 @@ def make_grammar(text: str, ignore: int = RuleIgnore.NONE) -> Grammar:
     # Grammar,Rule,Identifier,Prefix,Choice,Newline,Sequence,String,Expression,Quantifier,RegEx
     def visit(node: Match, tokens: str) -> Any:
         """Visit a node in the AST and return its value."""
-        if node.rule.identity == "Rule":
+        if node.rule.identity == "Grammar":
+            return visit_grammar(node, tokens)
+        elif node.rule.identity == "Rule":
             return visit_rule(node, tokens)
         elif node.rule.identity == "Priority":
             return node.slice(tokens)
@@ -770,9 +774,7 @@ def make_grammar(text: str, ignore: int = RuleIgnore.NONE) -> Grammar:
     def visit_grammar(node: Match, tokens: str) -> Dict[str, Rule | str]:
         grammar = {}
         for child in node.children:
-            if child.rule.identity == "Comment":
-                continue # skip line comments
-            identifier, rule = visit_rule(child, tokens)
+            identifier, rule = visit(child, tokens)
             grammar[identifier] = rule
         return grammar
 
@@ -780,7 +782,7 @@ def make_grammar(text: str, ignore: int = RuleIgnore.NONE) -> Grammar:
         return RuleString(node.slice(tokens)[2:].strip()) # remove # and whitespace
 
     def visit_rule(node: Match, tokens: str) -> Tuple[str, Rule | str]:
-        nonlocal macros, discard, hoist
+        nonlocal macros, discard, hoist, merge, cond
         strict = False
         if node.children[0].rule.identity == "Strict":
             strict = True
@@ -790,6 +792,10 @@ def make_grammar(text: str, ignore: int = RuleIgnore.NONE) -> Grammar:
                 discard.add(identifier)
             case "->":
                 hoist.add(identifier)
+            case "<>":
+                merge.add(identifier)
+            case "~>":
+                cond.add(identifier)
         rule = visit(node.children[2], tokens)
         if isinstance(rule, Rule):
             rule.strict = strict
@@ -855,17 +861,21 @@ def make_grammar(text: str, ignore: int = RuleIgnore.NONE) -> Grammar:
 
     discard = set()
     hoist = set()
+    merge = set()
+    cond = set()
     macros = {}
     try:
         if not text.strip():
             raise GrammarError("Empty grammar definition provided.")
         try:
             rules = PEG.parse(text).first()
-            keys = visit_grammar(rules, text)
-            grammar = Grammar(ignore).register(**keys).resolve()
-            grammar.set_macro(**macros)
-            grammar.discard_rules(*discard)
-            grammar.hoist_rules(*hoist)
+            keys = visit(rules, text)
+            grammar = Grammar(flags).register(**keys).resolve()
+            grammar.macros = macros
+            grammar.discard = discard
+            grammar.hoist = hoist
+            grammar.merge = merge
+            grammar.conditional = cond
         except KeyError as e:
             raise GrammarError(f"Missing rule in grammar definition: {e}")
         return grammar

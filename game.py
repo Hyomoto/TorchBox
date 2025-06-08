@@ -10,6 +10,7 @@ from memory.protected import map as protectedMemory
 from memory.globals import map as globalMemory
 from memory.user import map as userMemory
 from memory.user import UserData
+import random
 import threading
 import queue
 import socket
@@ -41,7 +42,14 @@ loginAPI = {
     "set_nickname": lambda user, nickname: user.setNickname(nickname),
     "new_user": lambda username, password: realm.addUser(User(username, password, UserData())),
 }
+randomAPI = {
+    "randint": lambda a, b: random.randint(a, b),
+    "random": lambda: random.random(),
+    "choice": lambda x: random.choice(x),
+    "shuffle": lambda x: random.shuffle(x),
+}
 baseApi = {
+    "random" : randomAPI,
     "debug" : lambda x: print(f"[debug] {x}"),
     "length" : lambda x: len(x),
 }
@@ -97,10 +105,10 @@ class Game(TorchBox):
                         line = env["LINE"]
                         line = script.run(line, user.localEnv)
                         self.env = user.localEnv
-                        if env["SCENE"] == "exit":
-                            user.send("Goodbye!\r\n")
-                            user.close()
                         output = self.substitute(env["OUTPUT"].replace("\\n", "\n"))
+                        if env["SCENE"] == "exit":
+                            user.send(output)
+                            user.close()
                         input = self.substitute(env["INPUT"].replace("\\n", "\n"))
                         env["OUTPUT"] = ""
                         env["LINE"] = line
@@ -153,6 +161,7 @@ class Game(TorchBox):
             tinder = tinderstarter.compile(script, version)
         except FirestarterError as e:
             raise Ember(f"Error compiling '{filepath}':\n{e}")
+        print(tinder)
         self.add(keyname + filename[0], tinder)
     
     def add(self, name: str, scene: Tinder):

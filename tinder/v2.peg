@@ -1,0 +1,54 @@
+Line         -> ( Rule / Comment / Goto / Newline )
+Comment      -- "//" ~'[^\n]*'
+Newline      -- ~'\n|\r\n|\r' # newline
+
+Rule         -> Statement Newline
+Statement    <- ( Keyword / Write ) Condition?
+Keyword      -> Set / Input / Stop / Jump
+Write        <- ( String / Lookup ) ( "to" Identifier )?
+Goto         <- "#" Identifier
+
+Keyword      -> ( Call / Set / Input / Stop / Jump )
+Set          <- "set" Identifier (( "to" )? Expression )?
+Input        <- "input" Expression ( "to" Identifier )?
+Stop         <- "stop"
+Jump         <- "jump" ( "to" )? ( Identifier / Number )
+Call         <- "call" Function
+
+Condition    <- "if" Expression
+Expression   -> In
+In           ~> Or ( in ( Array / Lookup ))?
+Or           ~> And ( or And )*
+And          ~> Binary ( and Binary )*
+Binary       ~> Unary (( EqualEqual / BangEqual / LeftAngleBracket / RightAngleBracket / LeftAngleBracketEqual / RightAngleBracketEqual / Times / Slash / Plus / Minus ) Unary)*
+Unary        ~> ( Bang / Minus )? Primary
+Primary      -> Constant / String / Number / Redirect / Function / Identifier / Array / Group
+
+Lookup       -> Identifier / Redirect
+Group        -> "(" Expression ")"
+[Redirect]   <- ws? "@" !ws Identifier ws?
+Array        <- "[" Arguments ","? "]"
+Constant     <> True / False
+True         <- "True"
+False        <- "False"
+Function     <- Identifier "(" Arguments? ")"
+ws           -- ~'[ \\t]+' # ' ' or '\t'
+Arguments    -> Expression ( "," Expression )* 
+
+Identifier   <- ~"[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*"
+String       <> ~'"(?:[^"\\]|\\.)*"' / ~"'(?:[^'\\]|\\.)*'"
+Number       <- ~"-?[0-9]+(\\.[0-9]+)?"
+[EqualEqual] <- ws? "==" ws? / ws "is" ws
+[BangEqual]  <- ws? "!=" ws? / ws "is not" ws
+LeftAngleBracketEqual  <- "<="
+RightAngleBracketEqual <- ">="
+[LeftAngleBracket]     <- ws? "<" ws? / ws "less than" ws
+[RightAngleBracket]    <- ws? ">" ws? / ws "greater than" ws
+[Times]      <- ws? "*" ws? / ws "times" ws
+[Slash]      <- ws? "/" ws? / ws "div" ws
+[Plus]       <- ws? "+" ws? / ws "plus" ws
+[Minus]      <- ws? "-" ws? / ws "minus" ws
+[Bang]       <- ws "not" ws / ws? "!" !ws
+[in]         -- ws "in" ws
+[or]         -- ws "or" ws / ws? "|" ws?
+[and]        -- ws "and" ws / ws? "&" ws?

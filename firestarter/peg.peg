@@ -1,6 +1,6 @@
-Grammar       <- (Rule / Newline / Comment )+
+Grammar       <- ( Rule / Newline / Comment )+
 # Comment lines start with a hash (#) and can be ignored
-Rule          <- ( Strict / Identifier ) "<-" Expression Comment?
+Rule          <- ( Strict / Identifier ) Priority Expression Comment?
 Priority      <- "<-" / "--" / "->"
 Comment       <- "#" ~'[^\n]*' Newline
 Expression    <- Choice

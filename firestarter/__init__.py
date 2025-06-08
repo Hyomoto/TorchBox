@@ -42,6 +42,8 @@ from abc import ABC, abstractmethod
 from .grammar import Grammar, GrammarError, Match, RulePrimitive, AST
 import inspect
 
+from constants import RED, RESET
+
 # Firestarter compiler
 
 class Symbol(ABC):
@@ -114,6 +116,11 @@ class Value(Symbol):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.value})"
 
+class SymbolReplace(Exception):
+    """Thrown when a Symbol needs to be replaced during compilation."""
+    def __init__(self, new: Symbol):
+        self.new = new
+
 class FirestarterError(Exception):
     """
     Raised when compilation fails due to a malformed AST, invalid pattern, or
@@ -148,7 +155,7 @@ class Firestarter:
         strict (bool): Whether to enforce type checking on arguments (default: True).
     """
     def __init__(self, grammar: Grammar, strict: bool = True):
-        self.opcodes: Dict[str,Tuple[Symbol,List[Symbol | Type[Any]]]] = {}
+        self.opcodes = {}
         self.constants = {}
         self.grammar = grammar
         self.strict = strict
@@ -156,62 +163,27 @@ class Firestarter:
     def __repr__(self):
         return f"Firestarter(opcodes={list(self.opcodes.keys())}, strict={self.strict})"
 
-    def macro(self, op: Type[Symbol], name: str | None, *pattern: str | Symbol):
-        """
-        Create an alternate name or signature for an existing opcode.
-
-        This is used to alias a previously registered operation under a new name,
-        or to provide an alternative argument pattern. It reuses the original opcode
-        but can optionally override how arguments are interpreted at compile time.
-
-        See module docstring for argument pattern conventions.
-        """
-        if not isinstance(op, type) or not issubclass(op, Symbol):
-            raise TypeError(f"Expected a Symbol class, got {type(op).__name__}")
-        name = name or str(op.__name__)
-        opcode = self.opcodes[op.__name__]
-        if not opcode:
-            raise FirestarterError(f"Opcode {op.__name__} not registered.")
-        key = name if name else opcode[0]
-        if not pattern:
-            args = opcode[1]
-        else:
-            args = pattern
-        return self._register(op, key, *args)
-
-    def register(self, op: Type[Symbol], *pattern: str | Symbol):
-        """
-        Register a new opcode (Symbol subclass) and optionally override its argument pattern.
-
-        See module docstring for argument pattern conventions.
-        """
-        name = op.__name__
-        if name in self.opcodes:
-            raise FirestarterError(f"Opcode {name} already registered use macro for aliasing.")
-        return self._register(op, name, *pattern)
-
-    def _register(self, op: Type[Symbol], name: str | None, *pattern: str | Symbol):
+    def register(self, op: Type[Symbol], name: Optional[str] = None):
         """
         Internal helper for registering a keyword with a pattern and its
         corresponding operation.
         """
         if not isinstance(op, type) or not issubclass(op, Symbol):
-            raise TypeError(f"Expected a Symbol class, got {type(op).__name__}")
+            raise TypeError(f"Expected a Symbol class, got {op.__name__}")
         if not name:
             name = op.__name__
-        if not pattern:
-            args = op.args()
-        else:
-            args = list(pattern)
-            for a in args:
-                if isinstance(a, Symbol):
-                    continue # allow Symbols
-                elif isinstance(a, type) and issubclass(a, (Symbol, str, int, float, bool)):
-                    continue # allow Symbol subclasses
-                elif get_origin(a) in (Union, List, list):
-                    continue # allow Union, List
-                raise TypeError(f"Invalid pattern token {a} for {op.__name__}.")
-        self.opcodes[name] = (op, args)
+        self.opcodes[name] = (op, None)
+        return self
+    
+    def registerDefaults(self, name: str, *args: Symbol | Type[Any]):
+        """
+        Internal helper for registering a keyword with a pattern and its
+        corresponding constant value.
+        """
+        if name not in self.opcodes:
+            raise ValueError(f"Operation {name} not registered.")
+        op, _ = self.opcodes[name]
+        self.opcodes[name] = (op, list(args))
         return self
 
     def compile(self, tokens: str, asType: type = list):
@@ -235,12 +207,12 @@ class Firestarter:
         ast = self.parseTokens(tokens)
         return self.compileAst(ast, asType)
 
-    def parseTokens(self, tokens: str, flatten: bool = True):
+    def parseTokens(self, tokens: str):
         """
         Parse a string of tokens into an abstract syntax tree (AST) using the registered grammar.
         """
         try:
-            ast = self.grammar.parse(tokens, flatten)
+            ast = self.grammar.parse(tokens)
         except GrammarError as e:
             raise FirestarterError(f"Failed to parse tokens: {e}")
         if not ast:
@@ -265,8 +237,10 @@ class Firestarter:
             asType (type): A callable that accepts the final list of operations and
                         returns a reified object representing the compiled result.
         """
-        def getPattern_checked(op, pattern: List[Symbol | Type[Any]], args):
+        def getPattern(op, pattern: List[Type[Symbol]], args: List[Symbol], defaults: List[Symbol | None]):
             def typeCheck(arg, expected):
+                if not self.strict:
+                    return True
                 # Any
                 if expected is Any:
                     return True
@@ -283,109 +257,74 @@ class Firestarter:
                 # Basic Match
                 return isinstance(arg, expected)
             
-            j = 0
             result = []
-
-            for p in pattern:
-                # Injected constant symbol
-                if isinstance(p, Symbol):
-                    result.append(p)
-                    continue
-
+            
+            for i, p in enumerate(pattern):
                 origin = get_origin(p)
                 inner = get_args(p)
                 
                 # Optional[T]
                 if origin is Union and type(None) in inner:
-                    if j < len(args):
-                        result.append(args[j])
-                        j += 1
-                    else:
-                        result.append(None)
-                    continue
+                    if len(args) < len(pattern):
+                        if i < len(defaults or []):
+                            if typeCheck(defaults[i], inner):
+                                result.append(defaults[i])
+                            else:
+                                raise FirestarterError(f"Argument {defaults[i]} does not match expected type {inner} for {op.__name__}.") 
+                        else:
+                            result.append(None)
+                        continue
 
                 # List[T]
                 if origin in (list, List):
                     expected = inner[0] if inner else object
-                    if j >= len(args):
+                    if i >= len(args):
                         raise FirestarterError(f"Missing required arguments for variadic {op.__name__}.")
-                    remaining = args[j:]
+                    remaining = args[i:]
                     if not all(typeCheck(arg, expected) for arg in remaining):
                         raise FirestarterError(f"Expected list of {expected.__name__} for {op.__name__}.")
                     result.extend(remaining)
-                    j = len(args)
-                    continue
+                    break # List must be last in pattern
 
                 # Simple required type (Symbol subclass or base type)
-                if j >= len(args):
-                    raise FirestarterError(f"Missing required argument for {op.__name__}.")
-                if typeCheck(args[j], p):
-                    result.append(args[j])
+                if i >= len(args):
+                    raise FirestarterError(f"Missing required argument {i} for {op.__name__}.")
+                if typeCheck(args[i], p):
+                    result.append(args[i])
                 else:
-                    raise FirestarterError(f"Argument {args[j]} does not match expected type {p} for {op.__name__}.")
-                j += 1
-            return op(*result)
-
-        def getPattern_unchecked(op, pattern, args):
-            j = 0
-            result = []
-
-            for p in pattern:
-                # Injected constant symbol
-                if isinstance(p, Symbol):
-                    result.append(p)
-                    continue
-
-                origin = get_origin(p)
-                inner = get_args(p)
-
-                # Optional[T]
-                if origin is Union and type(None) in inner:
-                    if j < len(args):
-                        result.append(args[j])
-                        j += 1
-                    else:
-                        result.append(None)
-                    continue
-
-                # List[T]
-                if origin in (list, List):
-                    if j >= len(args):
-                        raise FirestarterError(f"Missing required arguments for variadic {op.__name__}.")
-                    remaining = args[j:]
-                    result.extend(remaining)
-                    j = len(args)
-                    continue
-
-                # Simple required argument (no type check)
-                if j >= len(args):
-                    raise FirestarterError(f"Missing required argument for {op.__name__}.")
-                result.append(args[j])
-                j += 1
-
-            return op(*result)
+                    raise FirestarterError(f"Argument {args[i]} does not match expected type {p} for {op.__name__}.")
+            try:
+                result = op(*result)
+            except SymbolReplace as e:
+                return e.new
+            return result
 
         stack: List[Tuple[Match,int,List]] = []
         results = []
-        getPattern = getPattern_checked if self.strict else getPattern_unchecked
+        lineNumbers = ast.lineNumbers
 
         for node in ast.matches:
             stack.append((node,0,[node.rule.identity]))
 
             while stack:
                 node, i, args = stack[-1] # look at last node
-                
+
                 if i == len(node.children): # finished traveral? push to previous scope
                     name = args.pop(0)  # get operation name
                     if name not in self.opcodes:
                         raise FirestarterError(f"Operation {name} not registered.")
-                    op, pattern = self.opcodes[name]
-                    output = getPattern(op, pattern, args)
+                    op, defaults = self.opcodes[name]
+                    
+                    pattern = op.args()
+                    try:
+                        output = getPattern(op, pattern, args, defaults) # type checking an optional injection
+                    except FirestarterError as e:
+                        raise FirestarterError(f"Error on line {lineNumbers.pop(0)}: {e}")
                     stack.pop()  # pop current node from stack
                     if stack:
                         stack[-1][2].append(output)
                     else:
-                        results.append(output)
+                        results.append((lineNumbers.pop(0), output))
                 else:
                     child = node.children[i]
                     stack[-1] = (node, i + 1, args)  # increment index for next iteration

@@ -11,9 +11,7 @@ class User:
         self.username = username
         self.salt = bcrypt.gensalt()  # Generate a new salt for the user
         self.hashed_password = bcrypt.hashpw(password.encode('utf-8'), self.salt)  # Hash the password with the salt
-        print(data)
         self.data = data or { "nickname": username } # Additional user data
-        print(self.data)
 
     def update(self, data: dict):
         """Update the user's data with a dictionary."""
