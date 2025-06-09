@@ -46,39 +46,40 @@ Tinder Scripting Language: Syntax
 - Sub-operations and nested function calls are supported within expressions.
 - Comments begin with `//`. Blank lines are ignored.
 
-Arguments
-=========
-String: "quoted"
-Number: parsed as float (e.g., 3, 2.5)
-Lookup: variable name (unquoted)
-Redirect: @key (lookup the value of key, then use as new key)
-Nil: Explicitly signals "no value" for optional/slurp args
-Sub-operation: `keyword ... for inline/nested operations
+Language Features
+=================
+Minimal Command Set:
+- Only five explicit commands: call, jump, set, input, and stop.
+- Any standalone string or interpolated expression on its own line is implicitly output to the user (“write”).
 
-Type Patterns
--------------
-Symbol   Meaning
- %s      String argument (literal or variable)
- %n      Number argument (literal or variable)
- %.      Any type (String, Number, Array, Lookup, Redirect, Nil, etc.)
- %?x     Optional argument of type x
- %..     Slurp: all remaining arguments, any type
- .ARG    Insert specific literal or variable (e.g., .INPUT)
+Line Structure:
+- Each line is a single command, a label (# label), a comment, or a string to output.
+- Conditions can be attached to commands (e.g., jump fail if not USER).
 
-Core Keywords & Patterns
-========================
-Keyword    Pattern         Function
- write     %. %?s          Write value to output (or optionally to variable)
- input     %s %?s          Prompt user, optionally store input in variable
- set       %s %.           Assign value to variable
- in        %. %..          Membership test (left in right...)
- and       %..             Logical AND of N arguments
- or        %..             Logical OR of N arguments
- not       %.              Logical NOT
- jump      %s %?expr       Jump to line/label if (optional) condition
- #         %s              Label marker (alias for jump target)
- stop      (none)          End script/yield
- call      %s %..          Call function with arguments
+Expressions:
+- Full support for arithmetic, comparison (==, !=, <, >, etc.), boolean logic, and function calls.
+- Lists are supported: [a, b, c].
+- Variable assignment and manipulation are straightforward (set VAR value).
+
+Value-Returning Operators:
+- or returns the first non-falsy value, not just a boolean (e.g., A or "fallback" gives "fallback" if A is falsy).
+- in returns the matched item if present (e.g., CHOICE in ["a", "b"] yields the matching string).
+
+String Interpolation:
+- Strings can interpolate variables using [[VARNAME]] syntax at runtime.
+
+Labels and Flow:
+- Labels (# label) act as jump targets.
+- jump may be conditional, allowing for simple branching and flow control.
+- stop halts script execution.
+
+Comments and Whitespace:
+- Lines beginning with // are ignored.
+- Blank lines are ignored.
+
+Evaluation:
+- Commands and expressions are parsed and executed left-to-right.
+- Scripts operate on a mutable environment (the Crucible), allowing flexible variable and state management.
 
 Notes:
 - The parser consumes arguments left-to-right, matching against the keyword's pattern.
@@ -121,22 +122,34 @@ class TinderBurn(Exception):
 
 # flow control
 
-class Yield(Exception):
+class FlowControl(Exception):
+    pass
+
+class Yield(FlowControl):
     """
     Used by Tinders to yield control.
     """
+    def __init__(self, line: int = 0):
+        self.line = line
     def __str__(self):
-        return "Yield()"
+        return f"Yield({self.line})"
 
-class JumpTo(Yield):
+class JumpTo(FlowControl):
     """
     Used by the Tinders to jump to a new line.
     """
-    def __init__(self, line: int):
-        super().__init__()
+    def __init__(self, line: int = 0, last: bool = 0):
         self.line = line
+        self.last = last
     def __str__(self):
         return f"JumpTo({self.line})"
+    
+class ReturnTo(FlowControl):
+    """
+    Used to return to the last jump line.
+    """
+    def __str__(self):
+        return "Return()"
 
 # symbols
 
@@ -486,6 +499,14 @@ class Jump(Kindling):
         raise JumpTo(int(line))
     def __repr__(self):
         return f"Jump(identifier={self.identifier})"
+    
+class Return(Kindling):
+    def __init__(self):
+        pass
+    def transmute(self, env: Crucible):
+        raise ReturnTo()
+    def __repr__(self):
+        return "Return()"
 
 class NoOp(Kindling):
     """A no-operation instruction that does nothing."""
@@ -498,12 +519,14 @@ class NoOp(Kindling):
     
 class Goto(NoOp):
     """A no-operation instruction used to flag line numbers by name."""
-    def __init__(self, identifier: Identifier | String):
+    def __init__(self, identifier: Identifier | String, otherwise: Optional[Identifier] = None):
         self.identifier: str = identifier.value
+        self.otherwise = otherwise.value if otherwise else None
     def transmute(self, env: Crucible):
-        pass
+        if self.otherwise: # if otherwise, yield to it
+            raise JumpTo(env.get(self.otherwise))
     def __repr__(self):
-        return f"Goto({self.identifier})"
+        return f"Goto(identifier={self.identifier}, otherwise={self.otherwise})"
 
 class Stop(Kindling):
     """Stops the execution of the Tinder."""
@@ -593,11 +616,14 @@ class Tinder:
             try:
                 op.transmute(env)
                 line += 1
-            except JumpTo as j:
-                line = j.line
-            except Yield:
-                line += 1
-                break
+            except Yield as e:
+                e.line = line
+                raise e
+            except JumpTo as e:
+                e.last = line
+                raise e
+            except FlowControl as e:
+                raise e
             except Exception as e:
                 raise TinderBurn(f"Run failed on line {actual}: {e}") from e
         return line
@@ -614,7 +640,7 @@ class Tinderstarter(Firestarter):
         super().__init__(None, True)
 
         classes = getAllSymbols()
-        # Auto-register all classes that are subclasses of Symbol
+        # Grabs all non-abstract classes so we can just define them and not register them manually
         for obj in classes:
             self.register(obj)
         self.registerDefaults("Write", String(""), Identifier("OUTPUT"))

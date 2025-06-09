@@ -6,14 +6,15 @@ Rule         -> Statement Newline
 Statement    <- ( Keyword / Write ) Condition?
 Keyword      -> Set / Input / Stop / Jump
 Write        <- ( String / Lookup ) ( "to" Identifier )?
-Goto         <- "#" Identifier
+Goto         <- "#" Identifier ( "else" Identifier )?
 
-Keyword      -> ( Call / Set / Input / Stop / Jump )
+Keyword      -> ( Call / Set / Input / Stop / Jump / Return )
 Set          <- "set" Identifier (( "to" )? Expression )?
 Input        <- "input" Expression ( "to" Identifier )?
 Stop         <- "stop"
 Jump         <- "jump" ( "to" )? ( Identifier / Number )
 Call         <- "call" Function
+Return       <- "return"
 
 Condition    <- "if" Expression
 Expression   -> In

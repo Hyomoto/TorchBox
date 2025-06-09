@@ -2,7 +2,7 @@ from typing import Tuple, Callable, Optional
 from torchbox import TorchBox, Ember, ConnectionHandler, SocketHandler, Shutdown
 from torchbox.realm import Realm, User
 from firestarter import FirestarterError
-from tinder import Tinderstarter, Tinder, TinderBurn
+from tinder import Tinderstarter, Tinder, TinderBurn, JumpTo, Yield, ReturnTo
 from tinder.crucible import Crucible, PROTECTED, READ_ONLY, NO_SHADOWING
 from torchbox.logger import Logger, Log, Critical, Warning, Info, Debug
 from constants import RESET
@@ -95,6 +95,7 @@ class Game(TorchBox):
                         script = self.get(scene)
                         env = user.userEnv
                         if user.change:
+                            lastline = 0
                             user.change = False
                             env.parent = self.shared
                             if not user.localEnv or "SAVE_LOCAL" not in user.localEnv:
@@ -103,7 +104,21 @@ class Game(TorchBox):
                             script.writeJumpTable(user.localEnv)
                         env["INPUT"] = message.content
                         line = env["LINE"]
-                        line = script.run(line, user.localEnv)
+                        while True:
+                            try:
+                                line = script.run(line, user.localEnv)
+                            except JumpTo as e:
+                                print(f"Jumping to line {script.instructions[e.line][0]}")
+                                lastline = e.last + 1
+                                line = e.line + 1
+                                continue
+                            except ReturnTo:
+                                print(f"Returning to line {script.instructions[lastline][0]}")
+                                line = lastline
+                                continue
+                            except Yield as e:
+                                line = e.line + 1
+                            break # exit the inner loop
                         self.env = user.localEnv
                         output = self.substitute(env["OUTPUT"].replace("\\n", "\n"))
                         if env["SCENE"] == "exit":
