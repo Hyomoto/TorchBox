@@ -18,20 +18,20 @@ class Log(ABC):
         return f"{self.icon}{self.color}{self.text}{Ansi.RESET}"
 
 class Debug(Log):
-    def __init__(self, text):
-        super().__init__(0, text, "🐞", Ansi.WHITE)
+    def __init__(self, text, custom: Optional[str] = None, color: Ansi = Ansi.WHITE):
+        super().__init__(0, text, custom or "🐞", color)
 
 class Info(Log):
-    def __init__(self, text):
-        super().__init__(1, text, "ℹ️ ", Ansi.CYAN)
+    def __init__(self, text, custom: Optional[str] = None, color: Ansi = Ansi.CYAN):
+        super().__init__(1, text, custom or "ℹ️ ", color)
 
 class Warning(Log):
-    def __init__(self, text):
-        super().__init__(2, text, "⚠️", Ansi.YELLOW)
+    def __init__(self, text, custom: Optional[str] = None, color: Ansi = Ansi.YELLOW):
+        super().__init__(2, text, custom or "⚠️ ", color)
 
 class Critical(Log):
-    def __init__(self, text):
-        super().__init__(3, text, "⛔", Ansi.RED)
+    def __init__(self, text, custom: Optional[str] = None, color: Ansi = Ansi.RED):
+        super().__init__(3, text, custom or "⛔", color)
 
 class Logger:
     def __init__(self, level: Type[Log] = Debug, length: int = 0, output: Optional[str] = None):

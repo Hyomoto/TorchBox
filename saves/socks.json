@@ -1,0 +1,11 @@
+{
+    "name": "Socks & Sorcery Realm",
+    "description": "A realm for Socks & Sorcery users.",
+    "users": {
+        "admin": {
+            "username": "admin",
+            "hashed_password": "$2b$12$mg6vawgDHflb/vVpRJGQE.u.jv63fq/PB1MuS6P.KpNy98FPKHWza",
+            "data": {}
+        }
+    }
+}

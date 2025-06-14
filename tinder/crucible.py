@@ -56,6 +56,60 @@ class Crucible:
     def __setitem__(self, var: str, value):
         self.set(var, value)
 
+    def serialize(self) -> Dict[str, Any]:
+        """Serialize the crucible to a dictionary representation."""
+        def serializeItem(item: Any):
+            if item is None:
+                return { "type": "NoneType", "value": None }
+            elif isinstance(item, dict):
+                return { "type" : "dict", "value" : {key: serializeItem(value) for key, value in item.items()}}
+            elif isinstance(item, list):
+                return { "type" : "list", "value" : [serializeItem(item) for item in item] }
+            elif isinstance(item, (int, float, str, bool)):
+                return { "type": type(item).__name__, "value": item }
+            elif hasattr(item, 'serialize'):
+                return { "type": item.__class__.__name__, "value": item.serialize() }
+            else:
+                raise CrucibleError(f"Cannot serialize item of type {type(item).__name__}.")
+        return {
+            "access": self.access,
+            "variables": serializeItem(self.variables)
+        }
+
+    @classmethod
+    def deserialize(cls, data: Dict[str, Any], classes: Optional[Dict[str, Any]] = None) -> "Crucible":
+        """Deserialize the crucible from a dictionary representation."""
+        def deserializeItem(data: Dict[str, Any]) -> Any:
+            t = data.get("type")
+            v = data.get("value")
+            match t:
+                case "NoneType":
+                    return None
+                case "dict":
+                    return {key: deserializeItem(value) for key, value in v.items()}
+                case "list":
+                    return [deserializeItem(item) for item in v]
+                case "int" :
+                    return int(v)
+                case "float":
+                    return float(v)
+                case "str":
+                    return str(v)
+                case "bool":
+                    return bool(v)
+                case _:
+                    if classes and t in classes:
+                        cls = classes[t]
+                        if hasattr(cls, 'deserialize'):
+                            return cls.deserialize(v)
+                        else:
+                            raise CrucibleError(f"Class {t} does not have a deserialize method.")
+                    raise CrucibleError(f"Unknown type '{t}' in serialized data.")
+        crucible = cls()
+        crucible.access = data["access"]
+        crucible.variables = deserializeItem(data["variables"])
+        return crucible
+
     def update(self, source: Dict[str, Any]):
         """Update the crucible with a dictionary of variables."""
         self.variables.update(source)

@@ -1,4 +1,4 @@
-from typing import Callable, Type, Dict, Set, Tuple, List, Any
+from typing import Callable, Generator, Type, Dict, Set, Tuple, List, Any
 from abc import ABC, abstractmethod
 import copy
 import re
@@ -17,28 +17,20 @@ class Match:
         self.children = children or []
         self.error = lasterror
 
+    def walk(self) -> Generator["Match", None, None]:
+        yield self
+        for child in self.children:
+            yield from child.walk()
+
+    def slice(self, tokens: str) -> str:
+        """Return the matched text from the input token stream."""
+        return tokens[self.start:self.end] if self.start < self.end else ""
+
     def __iter__(self):
         return self.walk()
 
     def __getitem__(self, index: int):
         return self.children[index]
-
-    def walk(self):
-        yield self
-        for child in self.children:
-            yield from child.walk()
-
-    def lastMatch(self) -> "Match":
-        """Return a chain of matches leading to the last child match."""
-        output = ""
-        for node in self.walk():
-            if node.rule.identity is not None:
-                output += f"-> {node.rule.identity}"
-        return output
-
-    def slice(self, tokens: str) -> str:
-        """Return the matched text from the input token stream."""
-        return tokens[self.start:self.end] if self.start < self.end else ""
 
     def __eq__(self, other):
         """Check if two matches are equal based on their start and end indices."""
@@ -67,27 +59,14 @@ class MatchError(Exception):
         self.expected = expected
         self.children = children or []
         self.matched = matched
-        self.branch = len(self.children) > 1  # True if this error has children, indicating a failed branch
         self.parent: MatchError | None = None  # Parent MatchError, if any
         for child in self.children:
             child.parent = self
 
-    def lastError(self) -> "MatchError":
-        best = self if self.matched else None
-
+    def walk(self) -> Generator["MatchError", None, None]:
+        yield self
         for child in self.children:
-            candidate = child.lastError()
-            if candidate and candidate.matched:
-                if (not best) or (candidate.pos > best.pos):
-                    best = candidate
-
-        return best if best else self
-
-    def lastIndex(self) -> int:
-        """Return the last index of the matched tokens."""
-        if self.children:
-            return max(child.lastIndex() for child in self.children)
-        return self.pos
+            yield from child.walk()
 
     def __repr__(self):
         return f"MatchError(pos={self.pos+1}, expected={self.expected}, matched={self.matched})"
@@ -300,9 +279,9 @@ class RuleAndPredicate(RulePredicate):
         try:
             match = self.rule.consume(tokens, pos, ignore)  # Try matching inner rule, never ignore tokens all are considered significant
             # If successful, return a zero-width match at pos
-            return Match(self, pos, pos)
+            return Match(self, pos, pos, [match])
         except MatchError as e:
-            raise MatchError(pos, self, [e], [match])
+            raise MatchError(pos, self, [e])
 
     def __repr__(self):
         return super().__repr__().replace("%s", repr(self.rule))
@@ -425,84 +404,101 @@ class GrammarParseError(GrammarError):
     """
     Raised when a grammar fails to parse.
     """
-    def __init__(self, index: int, line: int, column: int, token_slice: str, exception: MatchError, macros: Dict[str, str], hoists: Set[str]):
-        self.index = index
-        self.line = line
-        self.column = column
-        self.tokens = token_slice
-        self.exception = exception
-        self.macros = macros
-        self.hoists = hoists
+    def __init__(self, grammar: "Grammar", matches: List[Match], error: MatchError, tokens: str ):
+        self.grammar = grammar
+        self.matches = matches
+        self.error = error
+        self.tokens = tokens
 
     def __str__(self):
-        def backup(match: MatchError) -> MatchError | None:
-            """Find the last error in the chain that has a parent."""
-            while isinstance(match.expected, (RulePrimitive, RulePredicate)):
-                if match.parent is None:
-                    return None
-                match = match.parent
-            return match
-        # Build the base header
-        last = self.exception.lastError()
-        matched = None
-        if last.matched:
-            matched = ""
-            for node in last.matched[-1].walk():
-                if node.rule.identity is not None and node.rule.identity not in self.hoists:
-                    matched += f" -> {node.rule.identity}"
-            matched = matched[4:] # remove leading ' -> '
-        expect = None
+        def last_match(match: Match) -> Match:
+            """Return the furthest match in the match tree."""
+            furthest = match
+            for node in match.walk():
+                if node.end > furthest.end:
+                    furthest = node
+            return furthest
+
+        def deepest_error(error: MatchError) -> MatchError:
+            """Return the error with the highest position in the error tree."""
+            furthest = error
+            for node in error.walk():
+                if node.pos > furthest.pos:
+                    furthest = node
+            return furthest
+
+        def find_best_error(match: List[Match], error: MatchError) -> Tuple[Match | None, MatchError]:
+            if match:
+                furthest = last_match(match[-1]) # look at last match
+                err = error
+                if furthest.error:
+                    err = deepest_error(error)
+                else:
+                    last = furthest.end
+                    for node in error.walk():
+                        if node.pos >= last:
+                            if not err or node.pos > err.pos:
+                                err = node
+                return furthest, err
+            return None, deepest_error(error)
+
+        def matched_string(error: MatchError):
+            matched = []
+            while error.parent:
+                identity = error.expected.identity
+                if identity and identity not in self.grammar.hoist:
+                    matched.append(error.expected.identity)
+                error = error.parent
+            return " → ".join(reversed(matched)) if matched else ""
+
+        def get_identity(rule: Rule):
+            if rule.identity and rule.identity in self.grammar.macros:
+                return self.grammar.macros[rule.identity]
+            if isinstance(rule, RuleMultiple):
+                rules = rule.rules
+                match len(rules):
+                    case 1:
+                        return f"{get_identity(rules[0])}"
+                    case 2:
+                        return f"{rules[0]} or {rules[1]}"
+                    case _:
+                        expect = ", ".join(get_identity(r) for r in rules[:-1])
+                        return expect + f" or {get_identity(rules[-1])}"
+            if isinstance(rule, RulePrimitive):
+                expect = rule.pattern
+            else:
+                expect = rule.__class__.__name__
+            return expect
+        lastMatch, lastError = find_best_error(self.matches, self.error)
         unexpected = False
-        if isinstance(last.expected, RuleNotPredicate):
-            unexpected = True
-        while isinstance(last.expected, RulePredicate):
-            last.expected = last.expected.rule # drill into predicates
-        if isinstance(last.expected, RulePrimitive):
-            if last.expected.identity:
-                expect = self.macros.get(last.expected.identity, last.expected.pattern)
-            else:
-                expect = last.expected.pattern
-        elif isinstance(last.expected, RuleSingle):
-            raise RuntimeError("RuleSingle should never resolve as a final destination.")
-        elif isinstance(last.expected, RuleMultiple):
-            rules = last.expected.rules
-            match len(rules):
-                case 1:
-                    expect = repr(rules[0].identity)
-                case 2:
-                    expect = f"{repr(rules[0].identity)} or {repr(rules[1].identity)}"
-                case _:
-                    expect = ", ".join(repr(r.identity) for r in rules[:-1])
-                    expect += f" or {repr(rules[-1].identity)}"
+        matched = matched_string(lastError) if lastError else None
+        expect = None
+        header = None
+        row, column = getLineInfo(self.tokens, lastError.pos)
+        line = self.tokens.split('\n')[row - 1]
 
-        last = backup(last)
-        if last and last.expected:
-            rule = last.expected
-            if rule.identity is not None:
-                identifier = rule.identity
-            else:
-                identifier = rule.__class__.__name__
-            header = f"Error at line {self.line}, column {self.column} in rule {identifier!r}:"
+        expected = lastError.expected if lastError else None
+
+        if expected:
+            if isinstance(expected, RuleNotPredicate):
+                unexpected = True # got something we shouldn't have
+            expect = get_identity(lastError.parent.expected)
+            identity = lastError.expected.identity or lastError.expected.__class__.__name__
+            header = f"Error at line {row}, column {column} in {identity!r}:"
         else:
-            header = f"Error at line {self.line}, column {self.column}:"
+            header = f"Error at line {row}, column {column}:"
 
-        # Show exact location and context
-        pointer_line = "-" * (self.column - 1) + "^"
-        # The input fragment where it stopped, with context
-        snippet = self.tokens
-        output = (
-            f"{header}\n"
-            f"{snippet}\n"
-            f"{pointer_line}"
-        )
+        # unexpected?, identity, line, matched, expect
+        output = [ header,  line, ("-" * (column - 2) + "^") ]
         if matched:
-            output += f"\nMatched: {matched}"
+            output.append(f"Matched: {matched}")
         if expect:
             if unexpected:
-                output += f"\nFound {expect}, which is invalid here."
+                output.append(f"Matched {expect}, which is not valid here.")
             else:
-                output += f"\nExpected: {expect}"
-        return output
+                output.append(f"Expected: {expect}")
+        return "\n".join(output)
+
 
 class GrammarDeferResolve(GrammarError):
     """
@@ -541,6 +537,12 @@ TOKEN_RE = re.compile(
     r'|([^\s]+)'                # Plain token
 )
 
+def getLineInfo(tokens: str, pos: int) -> Tuple[int, int]:
+    """Returns the row and column indicated by pos in tokens."""
+    row = tokens.count('\n', 0, pos) + 1
+    column = pos if row == 1 else pos - tokens.rfind('\n', 0, pos) + 1
+    return row, column
+
 class Grammar:
     """A grammar definition for the Firestarter parser."""
     def __init__(self, flags: int = Flags.NONE):
@@ -568,7 +570,7 @@ class Grammar:
                 self.rule = rule # first registered rule becomes the root
         self.dirty = True
         return self
-    
+
     def resolve(self):
         """Resolve all rule references in the grammar."""
         def handle_rule(rule, callback):
@@ -610,26 +612,13 @@ class Grammar:
         return self
 
     def parse(self, tokens: str) -> AST:
-        def calculateLine(tokens: str, pos: int) -> Tuple[int, int]:
-            row = tokens.count('\n', 0, pos) + 1
-            column = pos - tokens.rfind('\n', 0, pos)
-            return row, column
-
-        def getLineInfo(tokens: str, error: MatchError):
-            # traverse match error to find the last index that failed to match
-            pos = error.lastIndex()
-            row, column = calculateLine(tokens, pos)
-            lines = tokens.split('\n')
-            line = lines[row - 1] if row <= len(lines) else ""
-            return column, row, line
-
         def do_flatten(node: Match) -> List[Match]:
             """Flatten AST by discarding scaffolding."""
             if node.rule.identity in self.merge:
                 node.children[0].rule = node.children[0].rule.duplicate()
                 node.children[0].rule.identity = node.rule.identity
                 return node.children[0]
-            
+
             children = []
 
             for child in node.children:
@@ -639,13 +628,13 @@ class Grammar:
                         children.extend(child)
                     else:
                         children.append(child)
-                
+
             if node.rule.identity is None or node.rule.identity in self.hoist:
                 return children
-            
+
             if node.rule.identity in self.discard:
                 return []
-            
+
             if node.rule.identity in self.conditional and len(children) == 1:
                 return children[0]
 
@@ -669,10 +658,7 @@ class Grammar:
                 matches.append(match)
                 pos = match.end
         except MatchError as e:
-            if matches and matches[-1].error:
-                e = matches[-1].error.lastError().children[0] # get the last error from the last match
-            col, row, line = getLineInfo(tokens, e)
-            raise GrammarParseError(pos, row, col, line, e, self.macros, self.hoist)
+            raise GrammarParseError(self, matches, e, tokens)
         if self.flags & Flags.FLATTEN:
             flattened = []
             for match in matches:
@@ -684,7 +670,7 @@ class Grammar:
             matches = flattened
             lineNumbers = []
             for line in matches:
-                line, _ = calculateLine(tokens, line.start)
+                line, _ = getLineInfo(tokens, line.start)
                 lineNumbers.append(line)
         return AST(lineNumbers, matches, tokens)
 
@@ -712,7 +698,6 @@ PEG = Grammar(Flags.IGNORE_SPACE_AND_TAB | Flags.FLATTEN).register(
         Identifier=RulePattern(re.compile(r'[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*')),
         Newline=RulePattern(re.compile(r'\n|\r\n|\r'))
     ).resolve()
-PEG.discard.add("Comment")
 PEG.discard.add("Newline")
 
 def make_grammar_from_file(file_path: str, flags: int = Flags.NONE) -> Grammar:
@@ -774,6 +759,8 @@ def make_grammar(text: str, flags: int = Flags.NONE) -> Grammar:
     def visit_grammar(node: Match, tokens: str) -> Dict[str, Rule | str]:
         grammar = {}
         for child in node.children:
+            if child.rule.identity == "Comment":
+                continue # skip line comments
             identifier, rule = visit(child, tokens)
             grammar[identifier] = rule
         return grammar
@@ -800,7 +787,7 @@ def make_grammar(text: str, flags: int = Flags.NONE) -> Grammar:
         if isinstance(rule, Rule):
             rule.strict = strict
         if len(node.children) > 3:
-            macros[identifier] = visit(node.children[3], tokens).pattern
+            macros[identifier] = visit_comment(node.children[3], tokens).pattern
         return (identifier, rule)
 
     def visit_choice(node: Match, tokens: str) -> Rule:

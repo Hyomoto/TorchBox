@@ -93,7 +93,7 @@ Author: Devon "Hyomoto" Mullane, 2025
 
 License: MIT License
 """
-from importlib.resources import files as import_files, files
+from importlib.resources import files
 from typing import Tuple, Type, Dict, List, Optional, Any
 from .crucible import Crucible
 from abc import ABC, abstractmethod
@@ -125,31 +125,48 @@ class TinderBurn(Exception):
 class FlowControl(Exception):
     pass
 
-class Yield(FlowControl):
+class Halted(FlowControl):
+    """Used to halt the execution of the Tinder."""
+    def __repr__(self):
+        return "Halt()"
+
+class Yielded(FlowControl):
     """
     Used by Tinders to yield control.
     """
-    def __init__(self, line: int = 0):
+    def __init__(self, line: int = 0, carry: Optional[Dict] = None):
         self.line = line
+        if carry and not isinstance(carry, dict):
+            raise TinderBurn(f"Illegal yield with carry: expected dict, got '{type(carry).__name__}'.")
+        self.carry = carry
     def __str__(self):
-        return f"Yield({self.line})"
+        return f"Yield(line={self.line}, carry={self.carry})"
 
-class JumpTo(FlowControl):
+class Jumped(FlowControl):
     """
     Used by the Tinders to jump to a new line.
     """
-    def __init__(self, line: int = 0, last: bool = 0):
+    def __init__(self, line: int = 0, last: int = 0):
         self.line = line
         self.last = last
     def __str__(self):
         return f"JumpTo({self.line})"
-    
-class ReturnTo(FlowControl):
+
+class Returned(FlowControl):
     """
     Used to return to the last jump line.
     """
     def __str__(self):
         return "Return()"
+
+class Imported(Yielded):
+    """
+    Used to import a library.
+    """
+    def __init__(self, library: str, name: Optional[str] = None):
+        super().__init__()
+        self.library = library
+        self.name = name
 
 # symbols
 
@@ -192,7 +209,16 @@ class BangEqual(Symbol):
 
 class EqualEqual(Symbol):
     pass
-    
+
+class From(Symbol):
+    pass
+
+class In(Symbol):
+    pass
+
+class At(Symbol):
+    pass
+
 # abstract base class
 
 class Kindling(AbstractSymbol, ABC):
@@ -217,13 +243,13 @@ class Value(AbstractValue, Kindling):
 
 class Constant(Value):
     """A constant value."""
-    def __init__(self, value: str):
+    def __init__(self, value):
         if value == "True":
             self.value = True
         elif value == "False":
             self.value = False
         else:
-            raise TinderBurn(f"Invalid constant value: {value}")
+            self.value = value
     @property
     def type(self):
         return type(self.value)
@@ -263,8 +289,8 @@ class Identifier(Value):
     def transmute(self, env: Crucible):
         return env.get(self.value)
 
-class Redirect(Identifier):
-    """A lookup that redirects to another variable in the environment."""
+class Indirect(Identifier):
+    """A lookup that directs to another lookup in the environment."""
     def __init__(self, value: Value | str ):
         if isinstance(value, Value):
             value = value.value
@@ -278,8 +304,8 @@ class Array(Value):
     def __init__(self, *items: Kindling):
         self.list = list(items)
     @property
-    def type(self) -> Type[List]:
-        return list
+    def type(self) -> Type["Array"]:
+        return Array
     def transmute(self, env: Crucible):
         return [item.transmute(env) for item in self.list]
     def __getitem__(self, index: int):
@@ -299,6 +325,41 @@ class Array(Value):
     def __repr__(self):
         return f"Array({self.list})"
 
+class KeyValuePair(Value):
+    """A key-value pair for use in Tables."""
+    def __init__(self, key: Identifier | String, value: Kindling):
+        self.key = key.value
+        self.value = value
+    @property
+    def type(self) -> Type[Tuple]:
+        return KeyValuePair
+    def transmute(self, env: Crucible):
+        value = self.value.transmute(env)
+        return (self.key, value)
+
+class Table(Value):
+    """A table of key-value pairs."""
+    def __init__(self, *items: KeyValuePair):
+        self.table = {item.key: item.value for item in items}
+    @property
+    def type(self) -> Type["Table"]:
+        return Table
+    def transmute(self, env: Crucible):
+        return {key: value.transmute(env) for key, value in self.table.items()}
+    def __getitem__(self, key: str):
+        if key in self.table:
+            return self.table[key]
+        raise KeyError(f"Key '{key}' not found in Table.")
+    def __setitem__(self, key: str, value: Kindling):
+        self.table[key] = value
+    def __contains__(self, key: str):
+        return key in self.table
+    def __len__(self):
+        return len(self.table)
+    def __repr__(self):
+        items = ', '.join(f"{key}={value}" for key, value in self.table.items())
+        return f"Table({{{items}}})"
+
 # kindling operations
 
 # unary functions
@@ -310,10 +371,9 @@ class Function(Kindling):
         self.arguments = list(args) if args else []
     def transmute(self, env: Crucible):
         identifier = self.identifier.transmute(env)
-        args = [arg.transmute(env) for arg in self.arguments]
         if not callable(identifier):
             raise TinderBurn(f"Identifier '{self.identifier}:{identifier}' is not callable.")
-        return identifier(*args)
+        return identifier(env, *[arg.transmute(env) for arg in self.arguments])
     def __repr__(self):
         return f"Function(identifier={self.identifier}, args={self.arguments})"
 
@@ -384,19 +444,19 @@ class Add(AbstractBinary):
         return self.left.transmute(env) + self.right.transmute(env)
     def __repr__(self):
         return super().__repr__().replace("%s", "+")
-    
+
 class Subtract(AbstractBinary):
     def transmute(self, env: Crucible):
         return self.left.transmute(env) - self.right.transmute(env)
     def __repr__(self):
         return super().__repr__().replace("%s", "-")
-    
+
 class Multiply(AbstractBinary):
     def transmute(self, env: Crucible):
         return self.left.transmute(env) * self.right.transmute(env)
     def __repr__(self):
         return super().__repr__().replace("%s", "*")
-    
+
 class Divide(AbstractBinary):
     def transmute(self, env: Crucible):
         return self.left.transmute(env) / self.right.transmute(env)
@@ -408,7 +468,7 @@ class Less(AbstractBinary):
         return self.left.transmute(env) < self.right.transmute(env)
     def __repr__(self):
         return super().__repr__().replace("%s", "<")
-    
+
 class Greater(AbstractBinary):
     def transmute(self, env: Crucible):
         return self.left.transmute(env) > self.right.transmute(env)
@@ -420,13 +480,14 @@ class LessEqual(AbstractBinary):
         return self.left.transmute(env) <= self.right.transmute(env)
     def __repr__(self):
         return super().__repr__().replace("%s", "<=")
-    
+
 class GreaterEqual(AbstractBinary):
     def transmute(self, env: Crucible):
+        left = self.left.transmute(env)
         return self.left.transmute(env) >= self.right.transmute(env)
     def __repr__(self):
         return super().__repr__().replace("%s", ">=")
-    
+
 class Equal(AbstractBinary):
     def transmute(self, env: Crucible):
         return self.left.transmute(env) == self.right.transmute(env)
@@ -444,7 +505,7 @@ class And(AbstractBinary):
         return self.left.transmute(env) and self.right.transmute(env)
     def __repr__(self):
         return super().__repr__().replace("%s", "and")
-    
+
 class Or(AbstractBinary):
     def transmute(self, env: Crucible):
         left = self.left.transmute(env)
@@ -457,19 +518,71 @@ class Or(AbstractBinary):
     def __repr__(self):
         return super().__repr__().replace("%s", "or")
 
-class In(AbstractBinary):
-    def __init__(self, left: Kindling, right: List):
+class Access(AbstractSymbol):
+    def __init__(self, left: Kindling, symbol: Symbol, right: Array | Table | Identifier):
+        match symbol:
+            case In():
+                raise SymbolReplace(ValueIn(left, right))
+            case From():
+                raise SymbolReplace(ValueFrom(left, right))
+            case At():
+                raise SymbolReplace(ValueAt(left, right))
+            case _:
+                raise TinderBurn(f"Unknown access operator: {symbol}")
+
+class ValueFrom(AbstractBinary):
+    """Returns where the value is found in the right operand, or None if not found."""
+    def __init__(self, left: Kindling, right: Array | Table | Identifier ):
         super().__init__(left, right)
     def transmute(self, env: Crucible):
-        left = self.left.transmute(env)
         right = self.right.transmute(env)
+        left = self.left.transmute(env)
+        if isinstance(right, Array):
+            if not isinstance(left, (int, float)):
+                raise TinderBurn(f"Left operand must be an integer index, got {type(left).__name__}.")
+            return right[int(left)] if left in right else None
+        if isinstance(right, Table):
+            for key, value in right.table.items():
+                if value.transmute(env) == left:
+                    return key
+            return None
+        raise TinderBurn(f"Right operand must be an Array or Table, got {type(right).__name__}.")
+
+class ValueIn(AbstractBinary):
+    """Returns the left operand if it is found in the right operand, otherwise None."""
+    def __init__(self, left: Kindling, right: Array | Table | Identifier ):
+        super().__init__(left, right)
+    def transmute(self, env: Crucible):
+        right = self.right.transmute(env)
+        if not isinstance(right, (dict, list)):
+            raise TinderBurn(f"Right operand must be an Array or Table, got {type(right).__name__}.")
+        left = self.left.transmute(env)
         if left in right:
             return left
         return None
     def __repr__(self):
         return super().__repr__().replace("%s", "in")
 
-# conditions
+class ValueAt(AbstractBinary):
+    """Returns the value at the index specified by the left operand in the right operand."""
+    def __init__(self, left: Kindling, right: Array | Table | Identifier ):
+        super().__init__(left, right)
+    def transmute(self, env):
+        right = self.right.transmute(env)
+        left = self.left.transmute(env)
+        if isinstance(right, Array):
+            if isinstance(left, (int, float)):
+                value = right[int(left)]
+                return value.transmute(env) if value else None
+            raise TinderBurn(f"Left operand must be an integer index, got {type(left).__name__}.")
+        if isinstance(right, Table):
+            if isinstance(left, str):
+                value = right[left]
+                return value.transmute(env) if value else None
+            raise TinderBurn(f"Left operand must be a string key, got {type(left).__name__}.")
+        raise TinderBurn(f"Right operand must be an Array or Table, got {type(right).__name__}.")
+
+# statements
 
 class Condition(Kindling):
     def __init__(self, condition: Kindling):
@@ -480,99 +593,6 @@ class Condition(Kindling):
         return False
     def __repr__(self):
         return f"If(condition={self.condition})"
-
-# control flow
-
-class Call(AbstractSymbol):
-    def __init__(self, function: Function):
-        raise SymbolReplace(function)
-
-class Jump(Kindling):
-    def __init__(self, identifier: Identifier):
-        self.identifier = identifier
-    def transmute(self, env: Crucible):
-        line = self.identifier.transmute(env)
-        if line is None:
-            raise TinderBurn(f"Jump target '{self.identifier.value}' not found in environment.")
-        if not isinstance(line, (int, float)):
-            raise TinderBurn(f"Jump target '{self.identifier.value}' is not a number.")
-        raise JumpTo(int(line))
-    def __repr__(self):
-        return f"Jump(identifier={self.identifier})"
-    
-class Return(Kindling):
-    def __init__(self):
-        pass
-    def transmute(self, env: Crucible):
-        raise ReturnTo()
-    def __repr__(self):
-        return "Return()"
-
-class NoOp(Kindling):
-    """A no-operation instruction that does nothing."""
-    def __init__(self):
-        pass
-    def transmute(self, env: Crucible):
-        pass
-    def __repr__(self):
-        return "NoOp()"
-    
-class Goto(NoOp):
-    """A no-operation instruction used to flag line numbers by name."""
-    def __init__(self, identifier: Identifier | String, otherwise: Optional[Identifier] = None):
-        self.identifier: str = identifier.value
-        self.otherwise = otherwise.value if otherwise else None
-    def transmute(self, env: Crucible):
-        if self.otherwise: # if otherwise, yield to it
-            raise JumpTo(env.get(self.otherwise))
-    def __repr__(self):
-        return f"Goto(identifier={self.identifier}, otherwise={self.otherwise})"
-
-class Stop(Kindling):
-    """Stops the execution of the Tinder."""
-    def __init__(self):
-        pass
-    def transmute(self, env: Crucible):
-        raise Yield()
-    def __repr__(self):
-        return "Stop()"
-
-# io
-
-class Input(Kindling):
-    """Sets a variable in the environment based and yields execution."""
-    def __init__(self, prompt: Kindling, identifier: Optional[Identifier] = None):
-        self.prompt = prompt
-        self.identifier = identifier.value
-    def transmute(self, env: Crucible):
-        env.set(self.identifier, self.prompt.transmute(env))
-        raise Yield()
-    def __repr__(self):
-        return f"Input(prompt={self.prompt}, identifier={self.identifier})"
-
-class Set(Kindling):
-    """Sets a variable in the environment."""
-    def __init__(self, identifier: Identifier, value: Optional[Kindling] = None):
-        self.identifier = identifier.value
-        self.value = value
-    def transmute(self, env: Crucible):
-        value = self.value.transmute(env) if self.value else None
-        env.set(self.identifier, value)
-    def __repr__(self):
-        return f"Set(identifier={self.identifier}, value={self.value})"
-
-class Write(Kindling):
-    """Writes a string to a variable in the environment."""
-    def __init__(self, text: Kindling, identifier: Optional[Identifier] = None):
-        self.text = text
-        self.identifier = identifier.value
-    def transmute(self, env: Crucible):
-        current = env.get(self.identifier) if self.identifier in env else ""
-        env.set(self.identifier, current + self.text.transmute(env) + "\n")
-    def __repr__(self):
-        return f"Write(text={self.text}, identifier={self.identifier})"
-
-# statements
 
 class Statement(Kindling):
     """A statement that executes a kindling operation."""
@@ -588,6 +608,156 @@ class Statement(Kindling):
     def __repr__(self):
         return f"Statement(operation={self.operation}, condition={self.condition})"
 
+### keywords ###
+
+class Call(AbstractSymbol):
+    def __init__(self, callout: Function):
+        raise SymbolReplace(callout)
+
+# assignment
+
+class Inc(AbstractSymbol):
+    def __init__(self, identifier: Identifier):
+        raise SymbolReplace(Set(identifier, Add(identifier, Number(1))))
+
+class Dec(AbstractSymbol):
+    def __init__(self, identifier: Identifier):
+        raise SymbolReplace(Set(identifier, Subtract(identifier, Number(1))))
+
+class Set(Kindling):
+    """Sets a variable in the environment."""
+    def __init__(self, identifier: Identifier, value: Optional[Kindling] = None):
+        self.identifier = identifier.value
+        self.value = value
+    def transmute(self, env: Crucible):
+        value = self.value.transmute(env) if self.value else None
+        env.set(self.identifier, value)
+    def __repr__(self):
+        return f"Set(identifier={self.identifier}, value={self.value})"
+
+# control flow
+
+class Interrupt(Kindling):
+    """Redirects execution to a specific line if an exception is raised."""
+    def __init__(self, exception: Identifier, jump: Identifier):
+        self.exception = exception.value
+        self.jump = jump.value
+    def transmute(self, env: Crucible):
+        raise InterruptHandler(self.exception, self.jump)
+    def __repr__(self):
+        return f"Interrupt(exception={self.exception}, jump={self.jump})"
+
+class Jump(Kindling):
+    def __init__(self, identifier: Identifier):
+        self.identifier = identifier
+    def transmute(self, env: Crucible):
+        line = self.identifier.transmute(env)
+        if line is None:
+            raise TinderBurn(f"Jump target '{self.identifier.value}' not found in environment.")
+        if not isinstance(line, (int, float)):
+            raise TinderBurn(f"Jump target '{self.identifier.value}' is not a number.")
+        raise Jumped(int(line))
+    def __repr__(self):
+        return f"Jump(identifier={self.identifier})"
+
+class Return(Kindling):
+    def __init__(self):
+        pass
+    def transmute(self, env: Crucible):
+        raise Returned()
+    def __repr__(self):
+        return "Return()"
+
+class NoOp(Kindling):
+    """A no-operation instruction that does nothing."""
+    def __init__(self):
+        pass
+    def transmute(self, env: Crucible):
+        pass
+    def __repr__(self) -> str:
+        return "NoOp()"
+
+class Goto(NoOp):
+    """A no-operation instruction used to flag line numbers by name."""
+    def __init__(self, identifier: Identifier | String, otherwise: Optional[Identifier] = None):
+        self.identifier: str = identifier.value
+        self.otherwise = otherwise.value if otherwise else None
+    def transmute(self, env: Crucible):
+        if self.otherwise: # if otherwise, yield to it
+            raise Jumped(env.get(self.otherwise))
+    def __repr__(self):
+        return f"Goto(identifier={self.identifier}, otherwise={self.otherwise})"
+
+class Stop(Kindling):
+    """Stops the execution of the Tinder."""
+    def __init__(self):
+        pass
+    def transmute(self, env: Crucible):
+        raise Halted()
+    def __repr__(self):
+        return "Stop()"
+
+class Yield(Kindling):
+    """Yields the execution of the Tinder."""
+    def __init__(self, callout: Optional[Function | Table] = None):
+        self.callout = callout
+    def transmute(self, env: Crucible):
+        if self.callout:
+            if isinstance(self.callout, Function):
+                output = self.callout.transmute(env)
+            else:
+                output = self.callout.transmute(env)
+        else:
+            output = None
+        raise Yielded(carry=output)
+    def __repr__(self) -> str:
+        return f"Yield(callout={self.callout})"
+
+# io
+
+class Input(Kindling):
+    """Sets a variable in the environment based and yields execution."""
+    def __init__(self, prompt: Kindling, identifier: Optional[Identifier] = None):
+        self.prompt = prompt
+        if not identifier:
+            raise TinderBurn("Input operation requires an identifier.")
+        self.identifier = identifier.value
+    def transmute(self, env: Crucible):
+        env.set(self.identifier, self.prompt.transmute(env))
+        raise Yielded()
+    def __repr__(self):
+        return f"Input(prompt={self.prompt}, identifier={self.identifier})"
+
+class Write(Kindling):
+    """Writes a string to a variable in the environment."""
+    def __init__(self, text: Kindling, identifier: Optional[Identifier] = None):
+        self.text = text
+        if not identifier:
+            raise TinderBurn("Write operation requires an identifier.")
+        self.identifier = identifier.value
+    def transmute(self, env: Crucible):
+        current = env.get(self.identifier) or ""
+        env.set(self.identifier, current + str(self.text.transmute(env)) + "\n")
+    def __repr__(self):
+        return f"Write(text={self.text}, identifier={self.identifier})"
+
+class Import(Kindling):
+    """Imports a library into the environment."""
+    def __init__(self, library: Identifier, name: Optional[Identifier] = None):
+        self.library = library.value
+        self.name = name.value if name else None
+    def transmute(self, env: Crucible):
+        raise Imported(self.library, self.name)
+    def __repr__(self):
+        return f"Import(library={self.library}, name={self.name})"
+
+# Interrupt Handler
+
+class InterruptHandler(Exception):
+    def __init__(self, exception: str, jump: str):
+        self.exception = exception
+        self.jump = jump
+
 # Tinder
 
 class Tinder:
@@ -596,12 +766,14 @@ class Tinder:
     the next line of execution or raises an exception if an error occurs.
     """
     jumpTable: Dict[str, int]
-    def __init__(self, instructions: List[Tuple[int, Kindling]] ):
+    def __init__(self, instructions: List[Tuple[int, Kindling]], **kwargs):
+        self.interrupts = {}
         self.instructions = instructions
         self.jumpTable = {inst[1].identifier: i for i, inst in enumerate(self.instructions) if isinstance(inst[1], Goto)}
-    def __setitem__(self, index: int, instruction: Kindling):
+        super().__init__(**kwargs)
+    def __setitem__(self, index: int, instruction):
         self.instructions[index] = instruction
-    def __getitem__(self, index: int) -> Kindling:
+    def __getitem__(self, index: int):
         return self.instructions[index]
     def __len__(self) -> int:
         return len(self.instructions)
@@ -616,15 +788,21 @@ class Tinder:
             try:
                 op.transmute(env)
                 line += 1
-            except Yield as e:
+            except InterruptHandler as e:
+                self.interrupts[e.exception] = e.jump
+                continue
+            except Yielded as e:
                 e.line = line
                 raise e
-            except JumpTo as e:
+            except Jumped as e:
                 e.last = line
                 raise e
             except FlowControl as e:
                 raise e
             except Exception as e:
+                if e.__class__.__name__ in self.interrupts:
+                    line = self.jumpTable[self.interrupts[e.__class__.__name__]]
+                    raise Jumped(line, line) # convert exception to Jumped
                 raise TinderBurn(f"Run failed on line {actual}: {e}") from e
         return line
 
@@ -636,9 +814,9 @@ def getAllSymbols():
     return [obj for _, obj in inspect.getmembers(sys.modules[__name__], lambda x: inspect.isclass(x) and issubclass(x, AbstractSymbol) and not inspect.isabstract(x))]
 
 class Tinderstarter(Firestarter):
-    def __init__(self):
-        super().__init__(None, True)
-
+    def __init__(self, script_type = Tinder):
+        super().__init__(grammar=None, strict=True) # type: ignore
+        self.script = script_type
         classes = getAllSymbols()
         # Grabs all non-abstract classes so we can just define them and not register them manually
         for obj in classes:
@@ -646,10 +824,10 @@ class Tinderstarter(Firestarter):
         self.registerDefaults("Write", String(""), Identifier("OUTPUT"))
         self.registerDefaults("Input", String(""), Identifier("INPUT"))
 
-    def compile(self, source: str, version: str) -> Tinder:
+    def compile(self, source: str, version: str) -> Tinder: # type: ignore
         if not source.endswith('\n'):
             source += '\n'
         if version not in GRAMMARS:
             raise TinderBurn(f"Unsupported Tinder version: {version}. Available versions: {list(GRAMMARS.keys())}")
         self.grammar = GRAMMARS[version]
-        return super().compile(source, Tinder)
+        return super().compile(source, self.script)

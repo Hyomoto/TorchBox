@@ -1,0 +1,15 @@
+import login
+    set USER to login.find_user(input)
+    call exit({LOGIN : "no_user"}) if not USER
+# get_password
+    input try
+    set SUCCESS to login.check_password(USER, INPUT)
+
+    call exit({LOGIN: "success"}) if SUCCESS
+
+    jump fail if tries is 0
+    set try to retry
+    dec tries
+    jump to get_password
+# fail
+    call exit({LOGIN : "wrong_password"})

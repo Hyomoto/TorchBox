@@ -1,50 +1,54 @@
-from game import instantiate_game, userMemory
+from typing import Optional
+from game import Game, instantiate_game, start_server, Scene, SocketUser
 from tinder.crucible import Crucible, NO_SHADOWING
 from torchbox import Message, ConnectionHandler, Shutdown
 from constants import RESET
 import copy
 
-class LocalUser(ConnectionHandler):
-    def __init__(self, queue, logger):
-        super().__init__(None, queue, logger)
-        env = Crucible(NO_SHADOWING).update(copy.copy(userMemory))
-        env["SCENE"] = "login"
-        self.userEnv = env
-        self.localEnv = None
-        self.change = True
+getInput = input
 
+class LocalUser(SocketUser):
     def login(self):
-        self.queue.put(Message(self, "__LOGIN__"))
+        self.queue.put(Message(self, "__LOGIN__", "login"))
 
     def receive(self):
         pass
 
-    def send(self, output: str, _input = None):
+    def send(self, output: str, input: Optional[str] = None):
         print(output)
-        _input = input((_input if _input else "") + " ")
-        self.queue.put(Message(self, _input))
+        input = getInput((input if input else "") + " ")
+        self.queue.put(Message(self, input))
 
-    def close(self):
-        raise Shutdown()
+    def close(self, output: Optional[str] = None):
+        if output:
+            print(output)
+        raise Shutdown("Close called on LocalUser.")
 
     def __repr__(self):
-        return f"<LocalUser>"
+        return "<LocalUser>"
 
 def debug():
-    torchbox = instantiate_game(debug = True)
+    torchbox: Game = instantiate_game(debug = True, script_type = Scene)
     torchbox.compile("./scripts/coin.v2.tinder")
-    local = LocalUser(torchbox.queue, torchbox.log)
-    local.userEnv["SCENE"] = "coin"
-    local.login()
+    torchbox.compile("./scripts/login.v2.tinder")
+    #torchbox.get("login").permissions = ["login"]
+    player = LocalUser(None, torchbox.queue, torchbox.log)
+    player.environment["STACK"] = [("coin",None)]
+    player.login()
     torchbox.run()
     print(RESET)
 
+def server():
+    torchbox: Game = instantiate_game()
+    start_server(torchbox)
+    print(RESET)
+
 def main():
-    torchbox = instantiate_game()
-    local = LocalUser(torchbox.queue, torchbox.log)
+    torchbox: Game = instantiate_game()
+    local = LocalUser(None, torchbox.queue, torchbox.log)
     local.login()
     torchbox.run()
     print(RESET)
 
 if __name__ == "__main__":
-    debug()
+    main()

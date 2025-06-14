@@ -6,7 +6,7 @@
     ""
     set m "`11Then don't be wearing any skirts around here, lad.`0"
     set f "`11Ah, pardon my manners, miss.`0"
-    @INPUT
+    write @INPUT
     "\n`1One last thing, you wouldn't have any particular skills, would you?\n"
     "`11(`6F`11)ighting with a sword"
     "`11(`6M`11)agic and spells"

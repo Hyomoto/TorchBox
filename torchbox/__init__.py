@@ -5,7 +5,6 @@ from .realm import Realm
 from .logger import Logger, Log, Critical, Warning, Info, Debug
 from abc import ABC, abstractmethod
 from constants import RESET, BLACK, WHITE, RED, GREEN, BROWN, BLUE, PURPLE, CYAN, YELLOW, LIGHT_GRAY, LIGHT_RED, LIGHT_GREEN, LIGHT_BLUE, LIGHT_PURPLE, LIGHT_CYAN, DARK_GRAY, BOLD, FAINT, ITALIC, UNDERLINE, BLINK, NEGATIVE, CROSSED
-from abc import ABC, abstractmethod
 import socket
 import threading
 import queue
@@ -17,7 +16,6 @@ class Ember(Exception):
     Remember: where there's smoke, there's fire.
     """
     pass
-
 
 class Shutdown(Exception):
     """
@@ -70,11 +68,11 @@ class ConnectionHandler(ABC):
                 self.receive()
             except Exception:
                 break
-        
+
     @abstractmethod
     def login(self):
         pass
-        
+
     @abstractmethod
     def receive(self):
         """Override in subclass: receive text input from user via this connection."""
@@ -83,7 +81,7 @@ class ConnectionHandler(ABC):
     def send(self, output: str, input: Optional[str] = None):
         """Override in subclass: send text response to user via this connection."""
         pass
-    def close(self):
+    def close(self, output: Optional[str] = None):
         """Override in subclass: close this connection."""
         pass
     def __repr__(self):
@@ -95,7 +93,7 @@ class SocketHandler(ConnectionHandler):
         super().__init__(client, queue, log)
 
     def login(self):
-        self.queue.put(Message(self, "__LOGIN__"))
+        self.queue.put(Message(self, "__LOGIN__", "login"))
 
     def receive(self):
         def filter(data: bytes) -> bytes:
@@ -143,9 +141,11 @@ class SocketHandler(ConnectionHandler):
         except Exception:
             self.close()
 
-    def close(self):
+    def close(self, output: Optional[str] = None):
         if not self.connected:
             return
+        if output:
+            self.client.sendall(output.encode('utf-8'))
         self.client.close()
         if self.log:
             self.log(Info("Connection closed."), self)
@@ -158,18 +158,17 @@ class SocketHandler(ConnectionHandler):
             return super().__repr__().replace("%s", "closed or unknown")
 
 class Message:
-    def __init__(self, user: ConnectionHandler, content: str):
+    def __init__(self, user: ConnectionHandler, content: str, type: Optional[str] = None):
         self.user = user
         self.content = content
+        self.type = type
 
 class TorchBox(ABC):
-    macros: Crucible
     scenes: Dict[str, Tinder]
     logger: Logger
     def __init__(self, realm: Realm, env: Crucible, logger: Logger = None):
         self.queue: queue.Queue[Message] = queue.Queue()
         self.logger = logger
-        self.macros = {}
         self.realm = realm
         self.env = env
         self.users: List[ConnectionHandler] = []
@@ -203,27 +202,22 @@ class TorchBox(ABC):
                     client.login()
         threading.Thread(target=socketListener, args=(host, port), daemon=True).start()
         return self
-    
+
     def getHandler(self, client, of: str) -> ConnectionHandler:
         match of:
             case 'socket':
                 return SocketHandler(client, self.queue, self.log)
             case _:
                 raise ValueError(f"Unknown handler type: {of}")
-        return self
 
     def substitute(self, text: str) -> str:
-        macros = self.macros
         env = self.env
-
         for match in reversed(list(MACRO_PATTERN.finditer(text))):
             macro = match.group(1)
             if match.group(0).startswith("`"):
                 # Handle color codes
                 color_code = int(match.group(0)[1:])
                 macro = COLORS[color_code]
-            elif macro in macros:
-                macro = self.substitute(macros[macro], macros, env)
             else:
                 macro = str(env[macro])
                 if not macro:

@@ -2,10 +2,14 @@
 This file contains the user memory module for the Sock & Sorcery game.
 It contains all user-related data and game state.
 """
-from typing import Dict
+from typing import Optional, Dict
+from typing import Tuple
+from tinder.crucible import Crucible, NO_SHADOWING
+from tinder import Tinder
+from torchbox.realm import User
 
 class Attribute(dict):
-    def __init__(self, current: int, base: int = None, max: int = None, min: int = 0):
+    def __init__(self, current: int, base: Optional[int] = None, max: Optional[int] = None, min: int = 0):
         self.current = current
         self.base = base if base is not None else current
         self.max = max if max is not None else current
@@ -14,12 +18,10 @@ class Attribute(dict):
         return str(self.current)
 
 map = {
+    "STACK" : [],
     "OUTPUT": "",
     "INPUT": "",
-    "LINE": 0,
-    "SCENE": "",
     "USER": None,
-    "PLAYER": None,
 }
 
 class UserData(dict):

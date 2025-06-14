@@ -3,16 +3,12 @@
 # get_username
     input "`11Lo' who goes there? (`0username`11):"
 # find_user
-    set USER to login.find_user(INPUT)
-    jump user_not_found if not USER
-
-    input "`3What is thy password? (`0password`3):" to UPASS
-    jump fail if not login.check_password(USER, INPUT)
-
+    call enter("login/secure", { input: INPUT, try: "`3What is thy password? (`0password`3):", retry: "`3That is incorrect, perhaps you have forgotten it? (`0password`3):", tries: 3 })
+    jump @LOGIN // success, no_user, wrong_password
+# success
     "\nWelcome, [[USER.nickname]]!\n"
-    set SCENE 10 + 5
     stop
-# user_not_found
+# no_user
     set TEMP INPUT
     input "`3I do not know you, stranger. Are you new here? [`1Y`3|`1N`3]: [`1Y`3]"
     set INPUT to INPUT or "y"
@@ -28,6 +24,6 @@
     "\n`11Don't go forgetting it now, just a few more questions for you."
     set SCENE "creation/start"
     stop
-# fail
+# wrong_password
     "You are not welcome here, stranger.`0"
-    set SCENE "exit"
+    stop

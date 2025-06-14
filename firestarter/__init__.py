@@ -174,7 +174,7 @@ class Firestarter:
             name = op.__name__
         self.opcodes[name] = (op, None)
         return self
-    
+
     def registerDefaults(self, name: str, *args: Symbol | Type[Any]):
         """
         Internal helper for registering a keyword with a pattern and its
@@ -256,13 +256,13 @@ class Firestarter:
                         return True
                 # Basic Match
                 return isinstance(arg, expected)
-            
+
             result = []
-            
+
             for i, p in enumerate(pattern):
                 origin = get_origin(p)
                 inner = get_args(p)
-                
+
                 # Optional[T]
                 if origin is Union and type(None) in inner:
                     if len(args) < len(pattern):
@@ -278,8 +278,8 @@ class Firestarter:
                 # List[T]
                 if origin in (list, List):
                     expected = inner[0] if inner else object
-                    if i >= len(args):
-                        raise FirestarterError(f"Missing required arguments for variadic {op.__name__}.")
+                    #if i >= len(args):
+                    #    raise FirestarterError(f"Missing required arguments for variadic {op.__name__}.")
                     remaining = args[i:]
                     if not all(typeCheck(arg, expected) for arg in remaining):
                         raise FirestarterError(f"Expected list of {expected.__name__} for {op.__name__}.")
@@ -314,7 +314,7 @@ class Firestarter:
                     if name not in self.opcodes:
                         raise FirestarterError(f"Operation {name} not registered.")
                     op, defaults = self.opcodes[name]
-                    
+
                     pattern = op.args()
                     try:
                         output = getPattern(op, pattern, args, defaults) # type checking an optional injection

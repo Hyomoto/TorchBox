@@ -1,3 +1,4 @@
+import random
 "\nWelcome to the Coin Flip Game!"
 "Will fortune favour you today?"
 # start
@@ -12,12 +13,10 @@ set WIN ((CHOICE in ["h", "heads"]) and RESULT == "heads") or ((CHOICE in ["t", 
 jump win if WIN
 
 "Unlucky! The coin landed on [[RESULT]]."
-set SCENE "exit"
-stop
+yield scene("login")
 # win
 "Congratulations! You guessed [[RESULT]] and won!"
-set SCENE "exit"
-stop
+yield scene("login")
 # invalid_choice
 "That's not a valid choice. Please pick heads or tails."
 jump start
