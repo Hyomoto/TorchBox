@@ -482,7 +482,7 @@ class GrammarParseError(GrammarError):
         if expected:
             if isinstance(expected, RuleNotPredicate):
                 unexpected = True # got something we shouldn't have
-            expect = get_identity(lastError.parent.expected)
+            expect = get_identity(lastError.parent.expected if lastError.parent else lastError.expected)
             identity = lastError.expected.identity or lastError.expected.__class__.__name__
             header = f"Error at line {row}, column {column} in {identity!r}:"
         else:

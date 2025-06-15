@@ -1,5 +1,5 @@
 from typing import Optional, Callable, Dict, List, Type, Any
-from tinder.crucible import Crucible
+from tinder.crucible import Crucible, CrucibleError
 from tinder import Tinder
 from .realm import Realm
 from .logger import Logger, Log, Critical, Warning, Info, Debug
@@ -219,11 +219,17 @@ class TorchBox(ABC):
                 color_code = int(match.group(0)[1:])
                 macro = COLORS[color_code]
             else:
-                macro = str(env[macro])
-                if not macro:
+                macro = macro.split(":")
+                try:
+                    value = env[macro[0]]
+                except CrucibleError:
                     continue
-                macro = self.substitute(macro)
-            text = text[:match.start()] + macro + text[match.end():]
+                if isinstance(value, float):
+                    value = format(value, macro[1] if len(macro) > 1 else ".0f")
+                else:
+                    value = format(value, macro[1] if len(macro) > 1 else "")
+                output = self.substitute(value)
+            text = text[:match.start()] + output + text[match.end():]
         return text
 
     def log(self, message: Log, handle: Optional[ConnectionHandler] = None):

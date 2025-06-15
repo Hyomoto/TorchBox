@@ -27,6 +27,7 @@ class Crucible:
         self.variables = {}
         self.parent = parent
         self.access = access
+        self.constants = []
 
     def __contains__(self, var: str):
         try:
@@ -110,15 +111,19 @@ class Crucible:
         crucible.variables = deserializeItem(data["variables"])
         return crucible
 
-    def update(self, source: Dict[str, Any]):
+    def update(self, source: Dict[str, Any], constants: Optional[list] = None):
         """Update the crucible with a dictionary of variables."""
         self.variables.update(source)
+        if constants:
+            self.constants.extend(constants)
         return self
     
     def set(self, var: str, value):
         def write_to_self(var, value):
             points = var.split('.')
             scope = self.variables
+            if points[0] in self.constants:
+                raise CrucibleError(f"Cannot redeclare '{var}': variable is a constant.")
             while len(points) > 1:
                 if points[0] not in scope:
                     if self.access & CrucibleAccess.READ_ONLY or self.access & CrucibleAccess.PROTECTED:

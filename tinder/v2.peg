@@ -1,11 +1,13 @@
 Line         -> ( Rule / Newline )
 Newline      -- ~'\n|\r\n|\r' # newline
 
-Rule         -> ( Comment / Import / Interrupt / Goto / Statement ) Newline
+Rule         -> ( Comment / From / Import / Const / Interrupt / Goto / Statement ) Newline
+From         <- "from" Identifier "import" Identifier ( "," Identifier )*
 Import       <- "import" Identifier ( "as" Identifier )?
 Interrupt    <- "catch" Identifier "at"? Identifier
 Comment      -- "//" ~'[^\n]*'
 Goto         <- "#" Identifier ( "else" Identifier )?
+Const        <- "const" Identifier ( "is" / "=" ) ( Constant / String / Number )
 Statement    <- Keyword Condition? Comment?
 
 Keyword      -> Write / Call / Set / Inc / Dec / Input / Yield / Stop / Jump / Return
@@ -22,18 +24,19 @@ Return       <- "return"
 
 Condition    <- "if" Expression
 Expression   -> Access
-Access       ~> Or (( In / From ) ( Array / Lookup ))?
+Access       ~> Or (( In / FromSymbol / At ) ( Array / Lookup ))?
 Or           ~> And ( or And )*
 And          ~> Binary ( and Binary )*
 Binary       ~> Unary (( EqualEqual / BangEqual / LeftAngleBracket / RightAngleBracket / LeftAngleBracketEqual / RightAngleBracketEqual / Times / SlashSlash / Slash / Plus / Minus ) Unary)*
 Unary        ~> ( Bang / Minus )? Primary
-Primary      -> Constant / String / Number / Indirect / Function / Identifier / Table / Array / Group
+Primary      -> Constant / String / Number / Indirect / Function / Identifier / Table / Array / Batch / Group
 
 Lookup       -> Identifier / Indirect
 Group        -> "(" Expression ")"
 [Indirect]   <- ws? "@" !ws Identifier ws?
+Batch        <- "<" Arguments ","? ">"
 Array        <- "[" Arguments ","? "]"
-Table        <- "{" KeyValuePair ( "," KeyValuePair )* "}"
+Table        <- "{" KeyValuePair ( "," KeyValuePair )* ","? "}"
 KeyValuePair <- Identifier ":" Expression
 Constant     <> True / False
 True         <- "True"
@@ -58,7 +61,7 @@ RightAngleBracketEqual <- ">="
 [Plus]       <- ws? "+" ws? / ws "plus" ws
 [Minus]      <- ws? "-" ws? / ws "minus" ws
 [Bang]       <- ws "not" ws / ws? "!" !ws
-[From]       <- ws "from" ws / "<-"
+[FromSymbol] <- ws "from" ws / "<-"
 [In]         <- ws "in" ws / "?" # in or ?
 [At]         <- ws "at" ws / "@"
 [or]         -- ws "or" ws / ws? "|" ws?

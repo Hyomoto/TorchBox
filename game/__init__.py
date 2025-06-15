@@ -5,15 +5,15 @@ from firestarter import FirestarterError
 from tinder import Tinderstarter, Tinder, Kindling, TinderBurn
 from tinder import Imported, Jumped, Yielded, Returned, Halted
 from tinder.crucible import Crucible, PROTECTED, READ_ONLY, NO_SHADOWING
-from torchbox.api import API, Permissions
+from torchbox.api import PermissionHolder, API
 from torchbox.logger import Logger, Log, Critical, Warning, Info, Debug
 from constants import RESET
-from memory.protected import map as protectedMemory
-from memory.globals import map as globalMemory
-from memory.user import map as userMemory, UserData
+from .memory.protected import map as protectedMemory
+from .memory.globals import map as globalMemory
+from .memory.user import map as userMemory, UserData
+from .apis import import_api, BaseAPI
 from pathlib import Path
 from constants import Ansi
-import random
 import threading
 import queue
 import socket
@@ -29,11 +29,12 @@ def get_file(path: str):
     with open(path, "r") as f:
         return f.read()
 
-class Scene(Tinder, Permissions):
+class Scene(Tinder, PermissionHolder):
     def __init__(self, instructions: List[Tuple[int, Kindling]], permissions: Optional[List[str]] = None):
         super().__init__(instructions=instructions, permissions=permissions)
     def __repr__(self):
-        return f"Scene(lines={len(self)}, permissions={self.permissions})"
+        list = '\n\t'.join(repr(inst) for inst in self.instructions)
+        return f"Scene[lines={len(self)}, permissions={self.permissions}](\n\t{list}\n)"
 
 def getAllScripts():
     scripts = []
@@ -60,76 +61,16 @@ class Game(TorchBox):
         super().__init__(realm, env, Logger(length = 255, output="./logs/torchbox.log"))
         self.scenes = {}
         # build the memory environment
-        self.shared = Crucible(PROTECTED, parent=env).update(globalMemory).update({
-            "debug" : lambda e, x: print(f"[debug] {x}"),
-            "length" : lambda e, x: len(x),
-            "change" : self.changeScene,
-            "enter" : self.enterScene,
-            "exit" : self.exitScene,
-        })
+        self.baseApi = BaseAPI(self)
+        self.shared = Crucible(PROTECTED, parent=env).update(globalMemory).update(self.baseApi.export())
+        print(self.shared.variables)
+        self.apis: dict[str, API] = import_api(self, exclude=["BaseAPI"])
+        self.log(Info(f"{len(self.apis)} APIs loaded: {Ansi.RESET}{', '.join(self.apis.keys())}", "🔌"))
         self.env = None
         self.running = True
         self.debug = False
+        self.log(Info("Game initialized.", "🕹️ "))
 
-        # all API functions must be callable with the environment as the first argument
-        def get_user(env: Crucible, username: str):
-            try:
-                return self.realm.getUser(username)
-            except Exception as e:
-                return None
-
-        self.apis = {
-            "login" : API({
-                "find_user": get_user,
-                "check_password": lambda e, user, password: user.checkPassword(password),
-                "set_password": lambda e, user, password: user.setPassword(password),
-                "set_nickname": lambda e, user, nickname: user.setNickname(nickname),
-                "new_user": lambda e, username, password: realm.addUser(User(username, password, UserData())),
-            }, "login"),
-            "random" : API({
-                "randint": lambda e, a, b: random.randint(a, b),
-                "random": lambda e: random.random(),
-                "choice": lambda e, x: random.choice(x),
-                "shuffle": lambda e, x: random.shuffle(x),
-            })
-        }
-
-    def changeScene(self, env: Crucible, scene: str, carry: Optional[dict] = None):
-        """
-        Change the scene for the player, setting up the local environment.
-        """
-        script = self.get(scene)
-        if not script:
-            raise TinderBurn(f"Scene '{scene}' not found.")
-        user = env.parent # grab user scope
-        local = Crucible(NO_SHADOWING, parent=user) # initialize new local scope
-        user["STACK"] = [(0, scene, local)]
-        script.writeJumpTable(local)
-        raise Yielded(line=0, carry=carry)  # Yield to allow the game loop to continue
-
-    def enterScene(self, env: Crucible, scene: str, carry: Optional[dict] = None):
-        """
-        Push a new scene onto the stack.
-        """
-        script = self.get(scene)
-        if not script:
-            raise TinderBurn(f"Scene '{scene}' not found.")
-        user = env.parent # grab user scope
-        local = Crucible(NO_SHADOWING, parent=user) # initialize new local scope
-        stack = user["STACK"]
-        stack.append((0, scene, local))
-        script.writeJumpTable(local)
-        raise Yielded(line=0, carry=carry)  # Yield to allow the game loop to continue
-
-    def exitScene(self, env: Crucible, carry: Optional[dict] = None):
-        """
-        Pop the current scene off the stack.
-        """
-        user = env.parent # grab user scope
-        stack = user["STACK"]
-        stack.pop()
-        raise Yielded(line=0, carry=carry)  # Yield to allow the game loop to continue
-        
     def run(self):
         def gameLoop():
             def scriptLoop(scene: str, script: Scene, user: Crucible, local: Crucible):
@@ -142,12 +83,15 @@ class Game(TorchBox):
                     try:
                         line = script.run(line, local)
                     except Imported as e:
-                        lib = self.apis[e.library]
-                        if not lib:
+                        if e.library not in self.apis:
                             raise TinderBurn(f"Library '{e.library}' not found.")
-                        if not script.hasPermission(lib):
+                        lib = self.apis.get(e.library)
+                        if not lib.hasPermission(script):
                             raise TinderBurn(f"Library '{e.library}' cannot be imported in this context.")
-                        local[e.name or e.library] = lib
+                        if e.request:
+                            local.update(lib.export(request=e.request))
+                        else:
+                            local[e.name or e.library] = lib.export()
                         line = e.line + 1
                         continue
 
@@ -230,6 +174,7 @@ class Game(TorchBox):
                             self.log(Warning(error))
                             player.send(error + "\n")
                             player.close() # close the connection on error
+                            raise e
                         except EOFError:
                             break
                         break

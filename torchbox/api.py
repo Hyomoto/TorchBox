@@ -1,36 +1,77 @@
 from typing import List, Dict, Tuple, Optional, Any
-import os
+from abc import ABC, abstractmethod
+import inspect
+import sys
 
-class Permissions:
-    """Subclass this to define custom permissions."""
+def import_api(module: str, context: object, include: List[str] = ["all"], exclude: List[str] = []):
+    apis = {}
+    for name, obj in inspect.getmembers(sys.modules[module], lambda x: inspect.isclass(x) and issubclass(x, API) and not inspect.isabstract(x)):
+        if name in exclude:
+            continue
+        if name in include or "all" in include:
+            new: API = obj(context)
+            apis[new.name] = new
+    return apis
+
+def exportable(fn):
+    fn._exportable = True
+    return fn
+
+def exportableAs(name: str):
+    def decorator(fn):
+        fn._exportable = True
+        fn._export_name = name
+        return fn
+    return decorator
+
+class PermissionHolder:
+    """An entity that has permissions."""
     def __init__(self, permissions: Optional[List[str]] = None, **kwargs):
         self.permissions = permissions or []
         super().__init__(**kwargs)
-    def hasPermission(self, api: "API"):
-        return api.canImport(self.permissions)
-    def __contains__(self, permission: str) -> bool:
-        return permission in self.permissions
-    def __repr__(self):
-        return f"Permissions({self.permissions})"
 
-class API(dict):
-    def __init__(self, api: Dict[str, Any], permissions: Optional[Tuple[str] | str] = None):
-        super().__init__(api)
-        self.update(api)
-        self.permissions = [permissions] if isinstance(permissions, str) else permissions
-
-    def canImport(self, permissions: List[str]) -> bool:
-        """
-        Check if the API can import a file based on its permissions and the file's path.
-        If no permissions are set, it allows all imports, otherwise returns False if
-        the file path does not start with any of the allowed permissions.
-        """
+class PermissionRequirer:
+    """An entity that requires permissions."""
+    def __init__(self, permissions: Optional[List[str]] = None, **kwargs):
+        self.permissions = permissions or []
+        super().__init__(**kwargs)
+    
+    def hasPermission(self, check: object) -> bool:
+        """Check if the required permissions are present in the given holder."""
         if not self.permissions:
             return True
-        for permission in self.permissions:
-            if permission in permissions:
-                return True
-        return False
+        if not isinstance(check, PermissionHolder):
+            return False
+        return all(perm in check.permissions for perm in self.permissions)
+
+class API(PermissionRequirer, dict, ABC):
+    """Base class for APIs, providing permission management and export functionality."""
+    @abstractmethod
+    def __init__(self, name: str, context: object, **kwargs):
+        self.name = name
+        self.context = context
+        super().__init__(**kwargs)
+
+    def export(self, matches: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Export the API's contents as a dictionary."""
+        exported = {}
+        for name in dir(self):
+            if name.startswith("_"):
+                continue
+            attr = getattr(self, name)
+            class_attr = getattr(type(self), name, None)
+            if callable(attr) and getattr(attr, "_exportable", False):
+                export_name = getattr(attr, "_export_name", name)
+                if matches and export_name not in matches:
+                    continue
+                exported[export_name] = attr
+            # If it's a property and exportable
+            elif isinstance(class_attr, property) and getattr(class_attr.fget, "_exportable", False):
+                export_name = getattr(class_attr.fget, "_export_name", name)
+                if matches and export_name not in matches:
+                    continue
+                exported[export_name] = attr
+        return exported
 
     def __repr__(self):
         return f"API({self.permissions}): {super().__repr__()}"

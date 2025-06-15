@@ -312,7 +312,7 @@ class Firestarter:
                 if i == len(node.children): # finished traveral? push to previous scope
                     name = args.pop(0)  # get operation name
                     if name not in self.opcodes:
-                        raise FirestarterError(f"Operation {name} not registered.")
+                        raise FirestarterError(f"Error on line {lineNumbers.pop(0)}: operation {name} not registered.")
                     op, defaults = self.opcodes[name]
 
                     pattern = op.args()
@@ -330,7 +330,7 @@ class Firestarter:
                     stack[-1] = (node, i + 1, args)  # increment index for next iteration
                     identity = child.rule.identity
                     if identity not in self.opcodes:
-                        raise FirestarterError(f"Operation {identity} not registered.")
+                        raise FirestarterError(f"Error on line {lineNumbers.pop(0)}: operation {identity} not registered.")
                     if isinstance(child.rule, RulePrimitive): # Primitive node, directly append to results
                         stack.append((child,0,[identity,child.slice(ast.tokens)]))
                     else: # Non-primitive node, push to stack for further processing

@@ -95,11 +95,12 @@ License: MIT License
 """
 from importlib.resources import files
 from typing import Tuple, Type, Dict, List, Optional, Any
-from .crucible import Crucible
+from .crucible import Crucible, CrucibleError
 from abc import ABC, abstractmethod
 from firestarter import Firestarter, SymbolReplace, Symbol as AbstractSymbol, Value as AbstractValue
 from firestarter.grammar import make_grammar_from_file, Grammar
 from firestarter.grammar import Flags as GrammarFlags
+from functools import singledispatch
 import inspect
 import sys
 
@@ -163,10 +164,11 @@ class Imported(Yielded):
     """
     Used to import a library.
     """
-    def __init__(self, library: str, name: Optional[str] = None):
+    def __init__(self, library: str, name: Optional[str] = None, request: Optional[List[str]] = None):
         super().__init__()
         self.library = library
         self.name = name
+        self.request = request
 
 # symbols
 
@@ -243,7 +245,7 @@ class Value(AbstractValue, Kindling):
 
 class Constant(Value):
     """A constant value."""
-    def __init__(self, value):
+    def __init__(self, value: Any):
         if value == "True":
             self.value = True
         elif value == "False":
@@ -253,6 +255,8 @@ class Constant(Value):
     @property
     def type(self):
         return type(self.value)
+    def __repr__(self):
+        return f"Constant({self.value!r})"
 
 class String(Constant):
     """A string value."""
@@ -270,6 +274,10 @@ class Number(Constant):
     """A number value."""
     def __init__(self, value: str):
         self.value = self.type(value)
+    def transmute(self, env: Crucible):
+        if self.value % 1 == 0:
+            return int(self.value)
+        return float(self.value)
     @property
     def type(self):
         return float
@@ -360,6 +368,28 @@ class Table(Value):
         items = ', '.join(f"{key}={value}" for key, value in self.table.items())
         return f"Table({{{items}}})"
 
+class Batch(Value):
+    def __init__(self, *items: Kindling):
+        self.items = list(items)
+    def transmute(self, env: Crucible):
+        map = {}
+        for item in self.items:
+            item = item.transmute(env)
+            if not isinstance(item, str):
+                raise TinderBurn(f"Batch item must be a String, got {type(item).__name__}.")
+            parts = item.split('.')
+            full = "".join(parts)
+            key = ""
+            for part in parts:
+                key += part
+                map[key] = full
+        return map
+    @property
+    def type(self) -> Type["Batch"]:
+        return Batch
+    def __repr__(self):
+        return f"Batch({self.items})"
+
 # kindling operations
 
 # unary functions
@@ -368,12 +398,12 @@ class Function(Kindling):
     """Calls a function in the environment with arguments."""
     def __init__(self, identifier: Identifier, *args: Kindling):
         self.identifier = identifier
-        self.arguments = list(args) if args else []
+        self.arguments = Array(*args) if args else None
     def transmute(self, env: Crucible):
         identifier = self.identifier.transmute(env)
         if not callable(identifier):
             raise TinderBurn(f"Identifier '{self.identifier}:{identifier}' is not callable.")
-        return identifier(env, *[arg.transmute(env) for arg in self.arguments])
+        return identifier(env, *self.arguments.transmute(env) if self.arguments else [])
     def __repr__(self):
         return f"Function(identifier={self.identifier}, args={self.arguments})"
 
@@ -417,13 +447,13 @@ class Binary(AbstractSymbol):
                 raise SymbolReplace(Multiply(left, right))
             case Slash():
                 raise SymbolReplace(Divide(left, right))
-            case Less():
+            case LeftAngleBracket():
                 raise SymbolReplace(Less(left, right))
-            case Greater():
+            case RightAngleBracket():
                 raise SymbolReplace(Greater(left, right))
-            case LessEqual():
+            case LeftAngleBracketEqual():
                 raise SymbolReplace(LessEqual(left, right))
-            case GreaterEqual():
+            case RightAngleBracketEqual():
                 raise SymbolReplace(GreaterEqual(left, right))
             case EqualEqual():
                 raise SymbolReplace(Equal(left, right))
@@ -596,7 +626,7 @@ class Condition(Kindling):
 
 class Statement(Kindling):
     """A statement that executes a kindling operation."""
-    def __init__(self, operation: Kindling, condition: Optional[Condition] = None):
+    def __init__(self, operation: "Keyword | Function", condition: Optional[Condition] = None):
         if not condition:
             raise SymbolReplace(operation) # no condition, just execute the operation
         self.operation = operation
@@ -609,6 +639,10 @@ class Statement(Kindling):
         return f"Statement(operation={self.operation}, condition={self.condition})"
 
 ### keywords ###
+
+class Keyword(Kindling):
+    """A keyword that represents a special operation that can't resolve at compile time."""
+    pass
 
 class Call(AbstractSymbol):
     def __init__(self, callout: Function):
@@ -624,7 +658,7 @@ class Dec(AbstractSymbol):
     def __init__(self, identifier: Identifier):
         raise SymbolReplace(Set(identifier, Subtract(identifier, Number(1))))
 
-class Set(Kindling):
+class Set(Keyword):
     """Sets a variable in the environment."""
     def __init__(self, identifier: Identifier, value: Optional[Kindling] = None):
         self.identifier = identifier.value
@@ -634,10 +668,20 @@ class Set(Kindling):
         env.set(self.identifier, value)
     def __repr__(self):
         return f"Set(identifier={self.identifier}, value={self.value})"
+    
+class Const(Set):
+    """Flags a variable as a const in the environment for the resolver."""
+    def __init__(self, identifier: Identifier, value: Constant ):
+        super().__init__(identifier, value)
+    def transmute(self, env):
+        super().transmute(env)
+        env.constants.append(self.identifier)
+    def __repr__(self):
+        return f"Const(identifier={self.identifier}, value={self.value})"
 
 # control flow
 
-class Interrupt(Kindling):
+class Interrupt(Keyword):
     """Redirects execution to a specific line if an exception is raised."""
     def __init__(self, exception: Identifier, jump: Identifier):
         self.exception = exception.value
@@ -647,20 +691,21 @@ class Interrupt(Kindling):
     def __repr__(self):
         return f"Interrupt(exception={self.exception}, jump={self.jump})"
 
-class Jump(Kindling):
-    def __init__(self, identifier: Identifier):
+class Jump(Keyword):
+    def __init__(self, identifier: Number | String | Identifier ):
         self.identifier = identifier
     def transmute(self, env: Crucible):
-        line = self.identifier.transmute(env)
-        if line is None:
+        try:
+            line = self.identifier.transmute(env)
+        except CrucibleError:
             raise TinderBurn(f"Jump target '{self.identifier.value}' not found in environment.")
         if not isinstance(line, (int, float)):
-            raise TinderBurn(f"Jump target '{self.identifier.value}' is not a number.")
+            raise TinderBurn(f"Jump target '{self.identifier.value}' is not a number ({line}).")
         raise Jumped(int(line))
     def __repr__(self):
         return f"Jump(identifier={self.identifier})"
 
-class Return(Kindling):
+class Return(Keyword):
     def __init__(self):
         pass
     def transmute(self, env: Crucible):
@@ -677,18 +722,18 @@ class NoOp(Kindling):
     def __repr__(self) -> str:
         return "NoOp()"
 
-class Goto(NoOp):
+class Goto(Keyword):
     """A no-operation instruction used to flag line numbers by name."""
     def __init__(self, identifier: Identifier | String, otherwise: Optional[Identifier] = None):
         self.identifier: str = identifier.value
-        self.otherwise = otherwise.value if otherwise else None
+        self.otherwise = otherwise
     def transmute(self, env: Crucible):
         if self.otherwise: # if otherwise, yield to it
-            raise Jumped(env.get(self.otherwise))
+            raise Jumped(self.otherwise.transmute(env))
     def __repr__(self):
         return f"Goto(identifier={self.identifier}, otherwise={self.otherwise})"
 
-class Stop(Kindling):
+class Stop(Keyword):
     """Stops the execution of the Tinder."""
     def __init__(self):
         pass
@@ -697,7 +742,7 @@ class Stop(Kindling):
     def __repr__(self):
         return "Stop()"
 
-class Yield(Kindling):
+class Yield(Keyword):
     """Yields the execution of the Tinder."""
     def __init__(self, callout: Optional[Function | Table] = None):
         self.callout = callout
@@ -715,7 +760,7 @@ class Yield(Kindling):
 
 # io
 
-class Input(Kindling):
+class Input(Keyword):
     """Sets a variable in the environment based and yields execution."""
     def __init__(self, prompt: Kindling, identifier: Optional[Identifier] = None):
         self.prompt = prompt
@@ -728,7 +773,7 @@ class Input(Kindling):
     def __repr__(self):
         return f"Input(prompt={self.prompt}, identifier={self.identifier})"
 
-class Write(Kindling):
+class Write(Keyword):
     """Writes a string to a variable in the environment."""
     def __init__(self, text: Kindling, identifier: Optional[Identifier] = None):
         self.text = text
@@ -741,7 +786,7 @@ class Write(Kindling):
     def __repr__(self):
         return f"Write(text={self.text}, identifier={self.identifier})"
 
-class Import(Kindling):
+class Import(Keyword):
     """Imports a library into the environment."""
     def __init__(self, library: Identifier, name: Optional[Identifier] = None):
         self.library = library.value
@@ -750,6 +795,16 @@ class Import(Kindling):
         raise Imported(self.library, self.name)
     def __repr__(self):
         return f"Import(library={self.library}, name={self.name})"
+    
+class From(Keyword):
+    """Imports one or more specific symbols from a library into the environment."""
+    def __init__(self, library: Identifier, *symbols: Identifier):
+        self.library = library.value
+        self.symbols = [symbol.value for symbol in symbols]
+    def transmute(self, env: Crucible):
+        raise Imported(self.library, request=self.symbols)
+    def __repr__(self):
+        return f"From(library={self.library}, symbols={self.symbols})"
 
 # Interrupt Handler
 
@@ -757,6 +812,82 @@ class InterruptHandler(Exception):
     def __init__(self, exception: str, jump: str):
         self.exception = exception
         self.jump = jump
+
+# Resolver
+
+@singledispatch
+def resolve(node: Kindling, env: Crucible):
+    """Try to resolve a Kindling."""
+    if (resolveChildren(node, env)):
+        try:
+            return Constant(node.transmute(env))
+        except Exception:
+            pass
+    return node
+
+@resolve.register
+def _(node: Statement, env: Crucible):
+    resolveChildren(node, env)
+    if isinstance(node.condition, Constant):
+        if node.condition.transmute(env):
+            return node.operation
+        else:
+            return NoOp()
+    return node
+
+@resolve.register
+def _(node: Identifier, env: Crucible):
+    if node.value in env.constants:
+        try:
+            value = node.transmute(env)
+            return Constant(value)
+        except Exception:
+            pass
+    return node
+
+@resolve.register
+def _(node: Constant, env: Crucible):
+    return node
+
+@singledispatch
+def resolveChildren(node: Kindling, env: Crucible):
+    """Recursively resolve all child kindlings."""
+    count, tried = 0, 0
+    for attr in vars(node):
+        tried += 1
+        value = getattr(node, attr)
+        if isinstance(value, list):
+            for i, item in enumerate(value):
+                if isinstance(item, Kindling):
+                    value[i] = resolve(item, env)
+        elif isinstance(value, Kindling):
+            setattr(node, attr, resolve(value, env))
+        count += 1 if isinstance(getattr(node, attr), Constant) else 0
+    return count == tried # all children resolved to constants
+
+@resolveChildren.register
+def _(node: Array, env: Crucible):
+    count = 0
+    for i in range(len(node.list)):
+        node.list[i] = resolve(node.list[i], env)
+        count += 1 if isinstance(node.list[i], Constant) else 0
+    return count == len(node.list) # whole list is resolved to constants
+
+@resolveChildren.register
+def _(node: Table, env: Crucible):
+    count = 0
+    for key, value in node.table.items():
+        node.table[key] = resolve(value, env)
+        count += 1 if isinstance(node.table[key], Constant) else 0
+    return count == len(node.table) # whole table is resolved to constants
+
+@resolveChildren.register
+def _(node: Batch, env: Crucible):
+    count = 0
+    for i in range(len(node.items)):
+        node.items[i] = resolve(node.items[i], env)
+        count += 1 if isinstance(node.items[i], Constant) else 0
+    return count == len(node.items)
 
 # Tinder
 
@@ -771,17 +902,33 @@ class Tinder:
         self.instructions = instructions
         self.jumpTable = {inst[1].identifier: i for i, inst in enumerate(self.instructions) if isinstance(inst[1], Goto)}
         super().__init__(**kwargs)
+
     def __setitem__(self, index: int, instruction):
         self.instructions[index] = instruction
+
     def __getitem__(self, index: int):
         return self.instructions[index]
+    
     def __len__(self) -> int:
         return len(self.instructions)
+    
     def __repr__(self) -> str:
         list = '\n\t'.join(repr(inst) for inst in self.instructions)
         return f"Tinder[{len(self)} lines](\n\t{list}\n)"
+    
     def writeJumpTable(self, env: Crucible):
         env.update(self.jumpTable)
+        return env
+
+    def resolve(self, env: dict = {}):
+        crucible = Crucible().update(env)
+        crucible.update(self.jumpTable, constants=[key for key in self.jumpTable.keys()])
+        for i, (line, instruction) in enumerate(self.instructions):
+            if isinstance(instruction, NoOp):
+                continue # discard no-ops
+            elif isinstance(instruction, Kindling):
+                self.instructions[i] = (line, resolve(instruction,crucible))
+
     def run(self, line: int, env: Crucible):
         while line < len(self.instructions):
             actual, op = self.instructions[line]
@@ -824,10 +971,14 @@ class Tinderstarter(Firestarter):
         self.registerDefaults("Write", String(""), Identifier("OUTPUT"))
         self.registerDefaults("Input", String(""), Identifier("INPUT"))
 
-    def compile(self, source: str, version: str) -> Tinder: # type: ignore
+    def compile(self, source: str, version: str, env: dict = {}) -> Tinder: # type: ignore
         if not source.endswith('\n'):
             source += '\n'
         if version not in GRAMMARS:
             raise TinderBurn(f"Unsupported Tinder version: {version}. Available versions: {list(GRAMMARS.keys())}")
         self.grammar = GRAMMARS[version]
-        return super().compile(source, self.script)
+        script = super().compile(source, self.script)
+        print(script)
+        script.resolve(env)
+        print(script)
+        return script
