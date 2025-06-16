@@ -10,3 +10,5 @@
 
 [Language](language.md)
 [GitHub](https://github.com/Hyomoto/TorchBox)
+
+![color](#564592)
