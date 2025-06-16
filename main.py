@@ -28,11 +28,9 @@ class LocalUser(SocketUser):
         return "<LocalUser>"
 
 def debug():
-    torchbox: Game = instantiate_game(debug = True)
-    torchbox.compile("./game/scripts/coin.v2.tinder")
-    #torchbox.get("login").permissions = ["login"]
+    torchbox: Game = instantiate_game(debug = False)
     player = LocalUser(None, torchbox.queue, torchbox.log)
-    player.environment["STACK"] = [(0,"coin",None)]
+    player.environment["STACK"] = [(0,"login/faststart",None)]
     player.login()
     torchbox.run()
     print(RESET)

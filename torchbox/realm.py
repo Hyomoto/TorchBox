@@ -1,6 +1,7 @@
 import os
 from typing import Set, Optional
 from tinder.crucible import Crucible, CrucibleAccess
+from .serializer import Serializer
 import threading
 import bcrypt
 import json
@@ -9,7 +10,7 @@ class RealmError(Exception):
     """Base class for all realm-related exceptions."""
     pass
 
-class User:
+class User(Serializer):
     def __init__(self, username: str, password: str, data: Optional[Crucible] = None):
         self.username = username
         salt = bcrypt.gensalt()  # Generate a new salt for the user
@@ -47,12 +48,12 @@ class User:
         }
     
     @classmethod
-    def deserialize(cls, data: dict):
+    def deserialize(cls, data: dict, classes: Optional[dict] = None):
         """Deserialize the user from a dictionary representation."""
         username = data.get("username")
         hashed_password = data.get("hashed_password")
         user_data = data.get("data", {})
-        crucible_data = Crucible.deserialize(user_data) if user_data else None
+        crucible_data = Crucible.deserialize(user_data, classes) if user_data else None
         user = cls(username, "", crucible_data)
         user.hashed_password = hashed_password.encode('utf-8')
         return user
@@ -72,7 +73,7 @@ class User:
     def __repr__(self):
         return f"User(username={self.username}, nickname={self.data.get('nickname', '')})"
 
-class Realm:
+class Realm(Serializer):
     def __init__(self, name: str, description: str = ""):
         self.name = name
         self.description = description
@@ -116,7 +117,7 @@ class Realm:
         }
 
     @classmethod
-    def deserialize(cls, data: str):
+    def deserialize(cls, data: str, classes: Optional[dict] = None):
         """Deserialize the realm from a string representation."""
         realm_data = json.loads(data)
         name = realm_data.get("name")
@@ -124,7 +125,7 @@ class Realm:
         users_data = realm_data.get("users", {})
         realm = cls(name, description)
         for user_data in users_data.values():
-            user = User.deserialize(user_data)
+            user = User.deserialize(user_data, classes)
             realm.addUser(user)
         return realm
 
@@ -147,11 +148,11 @@ class Realm:
         threading.Thread(target=serialize_and_save, daemon=False).start()
 
     @classmethod
-    def load(cls, from_path: str):
+    def load(cls, from_path: str, classes: Optional[dict] = None):
         """Load the realm from a file."""
         with open(from_path, "r") as f:
             data = f.read()
-        return cls.deserialize(data)
+        return cls.deserialize(data, classes)
 
     def __contains__(self, username: str) -> bool:
         """Check if a user exists in the realm by username."""

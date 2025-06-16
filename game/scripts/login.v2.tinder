@@ -17,13 +17,12 @@
     input "`3Perhaps I was mistaken. Who did you say you were? (`11username`3):"
     jump find_user
 # new_user
-    set USER login.new_user(TEMP, "default")
+    call login.new_user(TEMP, "default")
     "\n`11Ah, a new face! Welcome to our humble abode."
     input "`3First things first, you'll need a secret word: (`0password`3):"
     call login.set_password(USER, INPUT)
     "\n`11Don't go forgetting it now, just a few more questions for you."
-    set SCENE "creation/start"
-    stop
+    call change("creation/start")
 # wrong_password
     "You are not welcome here, stranger.`0"
-    stop
+    call exit()

@@ -1,11 +1,102 @@
 {
-    "name": "Socks & Sorcery Realm",
+    "name": "Socks & Sorcery",
     "description": "A realm for Socks & Sorcery users.",
     "users": {
         "admin": {
             "username": "admin",
-            "hashed_password": "$2b$12$mg6vawgDHflb/vVpRJGQE.u.jv63fq/PB1MuS6P.KpNy98FPKHWza",
+            "hashed_password": "$2b$12$DXsPJNyVc00K0jGRyfXeLurU70DggpBhU9gSM65lTQUJWbk3PGox6",
             "data": {}
+        },
+        "test": {
+            "username": "test",
+            "hashed_password": "$2b$12$RFvdBHxcTvdja/FSAxHj2.r6ewUbC9b7OJE1Ycpv/Q9rNnnC8QxXq",
+            "data": {
+                "access": 16,
+                "variables": {
+                    "type": "dict",
+                    "value": {
+                        "STACK": {
+                            "type": "list",
+                            "value": []
+                        },
+                        "OUTPUT": {
+                            "type": "str",
+                            "value": ""
+                        },
+                        "INPUT": {
+                            "type": "str",
+                            "value": "quit"
+                        },
+                        "USER": {
+                            "type": "dict",
+                            "value": {
+                                "nickname": {
+                                    "type": "str",
+                                    "value": "test"
+                                },
+                                "gender": {
+                                    "type": "str",
+                                    "value": ""
+                                },
+                                "race": {
+                                    "type": "str",
+                                    "value": ""
+                                },
+                                "money": {
+                                    "type": "Attribute",
+                                    "value": {
+                                        "current": 0,
+                                        "base": 0,
+                                        "max": 9999999,
+                                        "min": 0
+                                    }
+                                },
+                                "hp": {
+                                    "type": "Attribute",
+                                    "value": {
+                                        "current": 100,
+                                        "base": 100,
+                                        "max": 100,
+                                        "min": 0
+                                    }
+                                },
+                                "actions": {
+                                    "type": "Attribute",
+                                    "value": {
+                                        "current": 5,
+                                        "base": 5,
+                                        "max": 5,
+                                        "min": 0
+                                    }
+                                },
+                                "skills": {
+                                    "type": "dict",
+                                    "value": {
+                                        "attack": {
+                                            "type": "Attribute",
+                                            "value": {
+                                                "current": 1,
+                                                "base": 1,
+                                                "max": 1,
+                                                "min": 0
+                                            }
+                                        },
+                                        "defense": {
+                                            "type": "Attribute",
+                                            "value": {
+                                                "current": 1,
+                                                "base": 1,
+                                                "max": 1,
+                                                "min": 0
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

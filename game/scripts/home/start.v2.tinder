@@ -1,0 +1,26 @@
+// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  const HEAD = "`11" + ("-=" * 40) + "`3"
+  const MENU = <"f.ind", "v.iew", "q.uit">
+# start
+  "  [[PROG_NAME]] - `3Town Square"
+  write HEAD
+  "  The streets are crowded with people, and the air is filled with the"
+  "  sounds of laughter and conversation.\n"
+  "  (`06F`3)ind a fight                       `06V`3)iew your stats"
+  "  (`06M`3)arketplace                        `06R`3)eturn home"
+  "  (`11Q`3)uit"
+  ""
+  "  `11The Town Square   `15(? for menu)"
+  "  (F,M,V,R,Q)"
+# get_input
+  input "Your command, [[USER.nickname]]? "
+  set INPUT to match(INPUT, MENU, failed_input)
+  jump @INPUT
+# failed_input
+  write "Invalid command. Please try again."
+  jump get_input
+# view
+  call scene("user/status")
+# find else start
+# quit
+  stop

@@ -7,13 +7,40 @@ from typing import Tuple
 from tinder.crucible import Crucible, NO_SHADOWING
 from tinder import Tinder
 from torchbox.realm import User
+from torchbox.serializer import Serializer, serialize, deserialize
+import inspect
+import sys
 
-class Attribute(dict):
+def classes():
+    classes = {}
+    for name, obj in inspect.getmembers(sys.modules[__name__], lambda x: inspect.isclass(x) and not inspect.isabstract(x)):
+        classes[name] = obj
+    return classes
+
+class Attribute(dict, Serializer):
     def __init__(self, current: int, base: Optional[int] = None, max: Optional[int] = None, min: int = 0):
         self.current = current
         self.base = base if base is not None else current
         self.max = max if max is not None else current
         self.min = min
+    
+    def serialize(self) -> Dict[str, any]:
+        return {
+            "current": self.current,
+            "base": self.base,
+            "max": self.max,
+            "min": self.min
+        }
+    
+    @classmethod
+    def deserialize(cls, data: Dict[str, any], classes: Optional[dict] = None) -> "Attribute":
+        return cls(
+            current=data["current"],
+            base=data["base"],
+            max=data["max"],
+            min=data["min"]
+        )
+
     def __repr__(self):
         return str(self.current)
 
@@ -24,21 +51,16 @@ map = {
     "USER": None,
 }
 
-class UserData(dict):
-    def __init__(self):
-        super().__init__(getUserData())
-    def update(self):
-        # TODO: implement update logic
-        pass
-
-def getUserData():
+def new_user_data(nickname: str):
     return {
-        "nickname" : "",
-        "gender" : "",
-        "race" : "",
+        "nickname" : nickname,
+        "gender" : "Male",
+        "race" : "Human",
         "money" : Attribute(0, max = 9_999_999),
         "hp" : Attribute(100),
         "actions" : Attribute(5),
+        "profession" : None,
+        "inventory" : [],
         "skills" : {
             "attack": Attribute(1),
             "defense": Attribute(1),

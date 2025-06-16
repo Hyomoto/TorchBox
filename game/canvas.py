@@ -142,8 +142,8 @@ class Canvas:
         self.height = height
         self.clear()
 
-    def clear(self):
-        self.canvas = [" " * self.width for _ in range(self.height)]
+    def clear(self, char = " "):
+        self.canvas = [char * self.width for _ in range(self.height)]
         self.colors = [[] for _ in range(self.height)]
         self.cursor = [0, 0]
         self.color = None
@@ -322,6 +322,9 @@ class Canvas:
         if len(pattern) == 1:
             ul = ur = bl = br = v = h = pattern[0]
             fill = pattern[0] if not outline else fill
+        elif len(pattern) == 2 and outline:
+            ul = ur = bl = br = v = h = pattern[0]
+            fill = pattern[1]
         elif len(pattern) == 3 and outline:
             corner, h, v = pattern
             ul = ur = bl = br = corner

@@ -10,7 +10,7 @@ from torchbox.logger import Logger, Log, Critical, Warning, Info, Debug
 from constants import RESET
 from .memory.protected import map as protectedMemory
 from .memory.globals import map as globalMemory
-from .memory.user import map as userMemory, UserData
+from .memory.user import map as userMemory, classes as user_classes
 from .apis import import_api, BaseAPI
 from pathlib import Path
 from constants import Ansi
@@ -24,6 +24,8 @@ import os
 QueueEmpty = queue.Empty
 
 SAVE_FILE = "./saves/socks.json"
+classes = {}
+classes.update(user_classes())
 
 def get_file(path: str):
     with open(path, "r") as f:
@@ -66,6 +68,7 @@ class Game(TorchBox):
         print(self.shared.variables)
         self.apis: dict[str, API] = import_api(self, exclude=["BaseAPI"])
         self.log(Info(f"{len(self.apis)} APIs loaded: {Ansi.RESET}{', '.join(self.apis.keys())}", "🔌"))
+        self.player: SocketUser = None
         self.env = None
         self.running = True
         self.debug = False
@@ -121,6 +124,7 @@ class Game(TorchBox):
                 try:
                     message = queue.get(timeout=1) # blocking
                     player: SocketUser = message.user
+                    self.player = player # keep reference to the player
                     user: Crucible = player.environment
 
                     if message.type == "login":
@@ -128,18 +132,18 @@ class Game(TorchBox):
                     
                     stack: list[Tuple[int, str, Crucible]] = user["STACK"]
 
-                    if stack[-1][2] is None:
-                        # If the scope is not set, we need to set it up
-                        scene = stack[-1][1]
-                        script = self.get(scene)
-                        if not script:
-                            raise TinderBurn(f"Scene '{scene}' not found.")
-                        local = Crucible(NO_SHADOWING, parent=user) # initialize new local scope
-                        user["STACK"] = [(0, scene, local)]
-                        stack = user["STACK"]
-                        script.writeJumpTable(local)
-                        
                     while True:
+                        if stack[-1][2] is None:
+                            # If the scope is not set, we need to set it up
+                            scene = stack[-1][1]
+                            script = self.get(scene)
+                            if not script:
+                                raise TinderBurn(f"Scene '{scene}' not found.")
+                            local = Crucible(NO_SHADOWING, parent=user) # initialize new local scope
+                            user["STACK"] = [(0, scene, local)]
+                            stack = user["STACK"]
+                            script.writeJumpTable(local)
+                        
                         depth = len(stack) - 1
                         lastline, script, local = stack[-1]
                         line = lastline
@@ -149,9 +153,16 @@ class Game(TorchBox):
                         try:
                             user["INPUT"] = message.content.lower()
                             scriptLoop(script, scene, user, local)
-                            if depth < len(stack):
-                                stack[depth] = (line, script, local) # update stack with new line
+                            # this is to clean up changes in local variables that may have been made
+                            # by the script, we look up the user scope, and rebind the local in case
+                            # the user has changed, and update the stack for the same reason
+                            user = player.environment
+                            local.parent = user
                             
+                            if depth < len(stack):
+                                _, scr, lo = stack[depth]
+                                stack[depth] = (line, scr, lo) # update stack with new line
+
                             output = self.substitute(user["OUTPUT"].replace("\\n", "\n"))
                             input = self.substitute(user["INPUT"].replace("\\n", "\n"))
                             
@@ -159,7 +170,6 @@ class Game(TorchBox):
                             if stack and stack[-1][1] != script:
                                 user["OUTPUT"] = output
                                 user["INPUT"] = input
-                                stack = user["STACK"]
                                 continue
                             
                             user["OUTPUT"] = ""
@@ -168,7 +178,10 @@ class Game(TorchBox):
                                 player.close(output)
                             else:
                                 player.send(output, input)
-                            
+                        except Shutdown:
+                            self.log(Info("Server shutting down...", "🛑"))
+                            self.running = False
+                            break
                         except TinderBurn as e:
                             error = f"Error in scene '{script}': {e}"
                             self.log(Warning(error))
@@ -243,7 +256,7 @@ def instantiate_game(debug: bool = False):
     game = Game(None, Crucible(READ_ONLY).update(protectedMemory))
     if os.path.exists(SAVE_FILE):
         game.log(Info(f"Loading realm from {Ansi.BLUE}{SAVE_FILE}{Ansi.RESET}...", "💽", Ansi.WHITE))
-        realm = Realm.load(SAVE_FILE)
+        realm = Realm.load(SAVE_FILE, classes=classes)
     else:
         game.log(Info("Creating new realm...", "🛠️", Ansi.WHITE))
         realm = Realm("Socks & Sorcery", "A realm for Socks & Sorcery users.")

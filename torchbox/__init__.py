@@ -217,7 +217,7 @@ class TorchBox(ABC):
             if match.group(0).startswith("`"):
                 # Handle color codes
                 color_code = int(match.group(0)[1:])
-                macro = COLORS[color_code]
+                output = COLORS[color_code]
             else:
                 macro = macro.split(":")
                 try:

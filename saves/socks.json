@@ -1,10 +1,191 @@
 {
-    "name": "Socks & Sorcery Realm",
+    "name": "Socks & Sorcery",
     "description": "A realm for Socks & Sorcery users.",
     "users": {
+        "test": {
+            "username": "test",
+            "hashed_password": "$2b$12$MLM3pYKJXxramisghBFlg.Nezf4yrNNIfYnUE6fPIQSG52BEdI1Eu",
+            "data": {
+                "access": 16,
+                "variables": {
+                    "type": "dict",
+                    "value": {
+                        "STACK": {
+                            "type": "list",
+                            "value": [
+                                {
+                                    "type": "tuple",
+                                    "value": [
+                                        {
+                                            "type": "int",
+                                            "value": 15
+                                        },
+                                        {
+                                            "type": "str",
+                                            "value": "home/start"
+                                        },
+                                        {
+                                            "type": "Crucible",
+                                            "value": {
+                                                "access": 16,
+                                                "variables": {
+                                                    "type": "dict",
+                                                    "value": {
+                                                        "start": {
+                                                            "type": "int",
+                                                            "value": 2
+                                                        },
+                                                        "get_input": {
+                                                            "type": "int",
+                                                            "value": 13
+                                                        },
+                                                        "failed_input": {
+                                                            "type": "int",
+                                                            "value": 17
+                                                        },
+                                                        "view": {
+                                                            "type": "int",
+                                                            "value": 20
+                                                        },
+                                                        "find": {
+                                                            "type": "int",
+                                                            "value": 22
+                                                        },
+                                                        "quit": {
+                                                            "type": "int",
+                                                            "value": 23
+                                                        },
+                                                        "HEAD": {
+                                                            "type": "str",
+                                                            "value": "`11-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
+                                                        },
+                                                        "MENU": {
+                                                            "type": "dict",
+                                                            "value": {
+                                                                "f": {
+                                                                    "type": "str",
+                                                                    "value": "find"
+                                                                },
+                                                                "find": {
+                                                                    "type": "str",
+                                                                    "value": "find"
+                                                                },
+                                                                "v": {
+                                                                    "type": "str",
+                                                                    "value": "view"
+                                                                },
+                                                                "view": {
+                                                                    "type": "str",
+                                                                    "value": "view"
+                                                                },
+                                                                "q": {
+                                                                    "type": "str",
+                                                                    "value": "quit"
+                                                                },
+                                                                "quit": {
+                                                                    "type": "str",
+                                                                    "value": "quit"
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        "OUTPUT": {
+                            "type": "str",
+                            "value": ""
+                        },
+                        "INPUT": {
+                            "type": "str",
+                            "value": "Your command, [[USER.nickname]]? "
+                        },
+                        "USER": {
+                            "type": "dict",
+                            "value": {
+                                "nickname": {
+                                    "type": "str",
+                                    "value": "test"
+                                },
+                                "gender": {
+                                    "type": "str",
+                                    "value": "Male"
+                                },
+                                "race": {
+                                    "type": "str",
+                                    "value": "Human"
+                                },
+                                "money": {
+                                    "type": "Attribute",
+                                    "value": {
+                                        "current": 0,
+                                        "base": 0,
+                                        "max": 9999999,
+                                        "min": 0
+                                    }
+                                },
+                                "hp": {
+                                    "type": "Attribute",
+                                    "value": {
+                                        "current": 100,
+                                        "base": 100,
+                                        "max": 100,
+                                        "min": 0
+                                    }
+                                },
+                                "actions": {
+                                    "type": "Attribute",
+                                    "value": {
+                                        "current": 5,
+                                        "base": 5,
+                                        "max": 5,
+                                        "min": 0
+                                    }
+                                },
+                                "profession": {
+                                    "type": "NoneType",
+                                    "value": null
+                                },
+                                "inventory": {
+                                    "type": "list",
+                                    "value": []
+                                },
+                                "skills": {
+                                    "type": "dict",
+                                    "value": {
+                                        "attack": {
+                                            "type": "Attribute",
+                                            "value": {
+                                                "current": 1,
+                                                "base": 1,
+                                                "max": 1,
+                                                "min": 0
+                                            }
+                                        },
+                                        "defense": {
+                                            "type": "Attribute",
+                                            "value": {
+                                                "current": 1,
+                                                "base": 1,
+                                                "max": 1,
+                                                "min": 0
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "admin": {
             "username": "admin",
-            "hashed_password": "$2b$12$mg6vawgDHflb/vVpRJGQE.u.jv63fq/PB1MuS6P.KpNy98FPKHWza",
+            "hashed_password": "$2b$12$DXsPJNyVc00K0jGRyfXeLurU70DggpBhU9gSM65lTQUJWbk3PGox6",
             "data": {}
         }
     }

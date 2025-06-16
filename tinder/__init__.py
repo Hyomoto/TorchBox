@@ -671,7 +671,7 @@ class Set(Keyword):
     
 class Const(Set):
     """Flags a variable as a const in the environment for the resolver."""
-    def __init__(self, identifier: Identifier, value: Constant ):
+    def __init__(self, identifier: Identifier, value: Kindling ):
         super().__init__(identifier, value)
     def transmute(self, env):
         super().transmute(env)
@@ -683,11 +683,11 @@ class Const(Set):
 
 class Interrupt(Keyword):
     """Redirects execution to a specific line if an exception is raised."""
-    def __init__(self, exception: Identifier, jump: Identifier):
+    def __init__(self, exception: String, jump: Identifier):
         self.exception = exception.value
-        self.jump = jump.value
+        self.jump = jump
     def transmute(self, env: Crucible):
-        raise InterruptHandler(self.exception, self.jump)
+        raise InterruptHandler(self.exception, self.jump.transmute(env))
     def __repr__(self):
         return f"Interrupt(exception={self.exception}, jump={self.jump})"
 
@@ -937,7 +937,7 @@ class Tinder:
                 line += 1
             except InterruptHandler as e:
                 self.interrupts[e.exception] = e.jump
-                continue
+                line += 1
             except Yielded as e:
                 e.line = line
                 raise e
@@ -948,7 +948,7 @@ class Tinder:
                 raise e
             except Exception as e:
                 if e.__class__.__name__ in self.interrupts:
-                    line = self.jumpTable[self.interrupts[e.__class__.__name__]]
+                    line = self.interrupts[e.__class__.__name__]
                     raise Jumped(line, line) # convert exception to Jumped
                 raise TinderBurn(f"Run failed on line {actual}: {e}") from e
         return line
@@ -978,7 +978,5 @@ class Tinderstarter(Firestarter):
             raise TinderBurn(f"Unsupported Tinder version: {version}. Available versions: {list(GRAMMARS.keys())}")
         self.grammar = GRAMMARS[version]
         script = super().compile(source, self.script)
-        print(script)
         script.resolve(env)
-        print(script)
         return script

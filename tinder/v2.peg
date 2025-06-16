@@ -4,10 +4,10 @@ Newline      -- ~'\n|\r\n|\r' # newline
 Rule         -> ( Comment / From / Import / Const / Interrupt / Goto / Statement ) Newline
 From         <- "from" Identifier "import" Identifier ( "," Identifier )*
 Import       <- "import" Identifier ( "as" Identifier )?
-Interrupt    <- "catch" Identifier "at"? Identifier
+Interrupt    <- "catch" String "at"? Identifier
 Comment      -- "//" ~'[^\n]*'
 Goto         <- "#" Identifier ( "else" Identifier )?
-Const        <- "const" Identifier ( "is" / "=" ) ( Constant / String / Number )
+Const        <- "const" Identifier ( "is" / "=" ) ( Expression )
 Statement    <- Keyword Condition? Comment?
 
 Keyword      -> Write / Call / Set / Inc / Dec / Input / Yield / Stop / Jump / Return

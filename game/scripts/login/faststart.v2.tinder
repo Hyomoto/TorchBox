@@ -1,0 +1,9 @@
+import login
+  catch "RealmError" at new
+  call debug("SOC faststart")
+  call login.delete_user("test")
+# new
+  call login.new_user("test", "default")
+  call debug("SOC faststart new user")
+# continue
+  call scene("home/start")
