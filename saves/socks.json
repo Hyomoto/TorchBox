@@ -2,9 +2,14 @@
     "name": "Socks & Sorcery",
     "description": "A realm for Socks & Sorcery users.",
     "users": {
+        "admin": {
+            "username": "admin",
+            "hashed_password": "$2b$12$DXsPJNyVc00K0jGRyfXeLurU70DggpBhU9gSM65lTQUJWbk3PGox6",
+            "data": {}
+        },
         "test": {
             "username": "test",
-            "hashed_password": "$2b$12$MLM3pYKJXxramisghBFlg.Nezf4yrNNIfYnUE6fPIQSG52BEdI1Eu",
+            "hashed_password": "$2b$12$iiPdGj5Y2Nys6FLWr1cvjO1YVOvy8b3uwPyh55Rt2CDPMP5j3m2xq",
             "data": {
                 "access": 16,
                 "variables": {
@@ -12,89 +17,7 @@
                     "value": {
                         "STACK": {
                             "type": "list",
-                            "value": [
-                                {
-                                    "type": "tuple",
-                                    "value": [
-                                        {
-                                            "type": "int",
-                                            "value": 15
-                                        },
-                                        {
-                                            "type": "str",
-                                            "value": "home/start"
-                                        },
-                                        {
-                                            "type": "Crucible",
-                                            "value": {
-                                                "access": 16,
-                                                "variables": {
-                                                    "type": "dict",
-                                                    "value": {
-                                                        "start": {
-                                                            "type": "int",
-                                                            "value": 2
-                                                        },
-                                                        "get_input": {
-                                                            "type": "int",
-                                                            "value": 13
-                                                        },
-                                                        "failed_input": {
-                                                            "type": "int",
-                                                            "value": 17
-                                                        },
-                                                        "view": {
-                                                            "type": "int",
-                                                            "value": 20
-                                                        },
-                                                        "find": {
-                                                            "type": "int",
-                                                            "value": 22
-                                                        },
-                                                        "quit": {
-                                                            "type": "int",
-                                                            "value": 23
-                                                        },
-                                                        "HEAD": {
-                                                            "type": "str",
-                                                            "value": "`11-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
-                                                        },
-                                                        "MENU": {
-                                                            "type": "dict",
-                                                            "value": {
-                                                                "f": {
-                                                                    "type": "str",
-                                                                    "value": "find"
-                                                                },
-                                                                "find": {
-                                                                    "type": "str",
-                                                                    "value": "find"
-                                                                },
-                                                                "v": {
-                                                                    "type": "str",
-                                                                    "value": "view"
-                                                                },
-                                                                "view": {
-                                                                    "type": "str",
-                                                                    "value": "view"
-                                                                },
-                                                                "q": {
-                                                                    "type": "str",
-                                                                    "value": "quit"
-                                                                },
-                                                                "quit": {
-                                                                    "type": "str",
-                                                                    "value": "quit"
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    ]
-                                }
-                            ]
+                            "value": []
                         },
                         "OUTPUT": {
                             "type": "str",
@@ -102,14 +25,18 @@
                         },
                         "INPUT": {
                             "type": "str",
-                            "value": "Your command, [[USER.nickname]]? "
+                            "value": "quit"
                         },
                         "USER": {
                             "type": "dict",
                             "value": {
-                                "nickname": {
+                                "username": {
                                     "type": "str",
                                     "value": "test"
+                                },
+                                "nickname": {
+                                    "type": "str",
+                                    "value": "Dr. Test"
                                 },
                                 "gender": {
                                     "type": "str",
@@ -182,11 +109,6 @@
                     }
                 }
             }
-        },
-        "admin": {
-            "username": "admin",
-            "hashed_password": "$2b$12$DXsPJNyVc00K0jGRyfXeLurU70DggpBhU9gSM65lTQUJWbk3PGox6",
-            "data": {}
         }
     }
 }

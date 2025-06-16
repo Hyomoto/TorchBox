@@ -92,7 +92,7 @@ class Game(TorchBox):
                         if not lib.hasPermission(script):
                             raise TinderBurn(f"Library '{e.library}' cannot be imported in this context.")
                         if e.request:
-                            local.update(lib.export(request=e.request))
+                            local.update(lib.export(e.request))
                         else:
                             local[e.name or e.library] = lib.export()
                         line = e.line + 1

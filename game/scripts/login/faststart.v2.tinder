@@ -4,6 +4,7 @@ import login
   call login.delete_user("test")
 # new
   call login.new_user("test", "default")
+  set USER.nickname to "Dr. Test"
   call debug("SOC faststart new user")
 # continue
   call scene("home/start")

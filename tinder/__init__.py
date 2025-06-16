@@ -436,31 +436,68 @@ class Not(Kindling):
 
 # binary functions
 
+PRECEDENCE = {
+    Plus: 2,
+    Minus: 2,
+    Times: 1,
+    Slash: 1,
+    LeftAngleBracket: 3,
+    RightAngleBracket: 3,
+    LeftAngleBracketEqual: 3,
+    RightAngleBracketEqual: 3,
+    EqualEqual: 4,
+    BangEqual: 4,
+}
+
 class Binary(AbstractSymbol):
-    def __init__(self, left: Kindling, symbol: Symbol, right: Kindling):
-        match symbol:
-            case Plus():
-                raise SymbolReplace(Add(left, right))
-            case Minus():
-                raise SymbolReplace(Subtract(left, right))
-            case Times():
-                raise SymbolReplace(Multiply(left, right))
-            case Slash():
-                raise SymbolReplace(Divide(left, right))
-            case LeftAngleBracket():
-                raise SymbolReplace(Less(left, right))
-            case RightAngleBracket():
-                raise SymbolReplace(Greater(left, right))
-            case LeftAngleBracketEqual():
-                raise SymbolReplace(LessEqual(left, right))
-            case RightAngleBracketEqual():
-                raise SymbolReplace(GreaterEqual(left, right))
-            case EqualEqual():
-                raise SymbolReplace(Equal(left, right))
-            case BangEqual():
-                raise SymbolReplace(NotEqual(left, right))
-            case _:
-                raise TinderBurn(f"Unknown binary operator: {symbol}")
+    def __init__(self, *ops: Any):
+        # Separate operands and operators
+        operands = ops[::2]  # a, b, c, d
+        operators = ops[1::2]  # +, *, +
+
+        operand_stack = []
+        operator_stack = []
+
+        def apply_operator():
+            right = operand_stack.pop()
+            left = operand_stack.pop()
+            op = operator_stack.pop()
+            if isinstance(op, Plus):
+                operand_stack.append(Add(left, right))
+            elif isinstance(op, Minus):
+                operand_stack.append(Subtract(left, right))
+            elif isinstance(op, Times):
+                operand_stack.append(Multiply(left, right))
+            elif isinstance(op, Slash):
+                operand_stack.append(Divide(left, right))
+            elif isinstance(op, LeftAngleBracket):
+                operand_stack.append(Less(left, right))
+            elif isinstance(op, RightAngleBracket):
+                operand_stack.append(Greater(left, right))
+            elif isinstance(op, LeftAngleBracketEqual):
+                operand_stack.append(LessEqual(left, right))
+            elif isinstance(op, RightAngleBracketEqual):
+                operand_stack.append(GreaterEqual(left, right))
+            elif isinstance(op, EqualEqual):
+                operand_stack.append(Equal(left, right))
+            elif isinstance(op, BangEqual):
+                operand_stack.append(NotEqual(left, right))
+            else:
+                raise TinderBurn(f"Unknown binary operator: {op}")
+
+        for i, operand in enumerate(operands):
+            operand_stack.append(operand)
+            if i < len(operators):
+                current_op = operators[i]
+                while operator_stack and PRECEDENCE[type(operator_stack[-1])] <= PRECEDENCE[type(current_op)]:
+                    apply_operator()
+                operator_stack.append(current_op)
+
+        while operator_stack:
+            apply_operator()
+        if len(operand_stack) != 1:
+            raise TinderBurn("Invalid expression tree construction")
+        raise SymbolReplace(operand_stack[0])
 
 class AbstractBinary(Kindling):
     def __init__(self, left: Kindling, right: Kindling):

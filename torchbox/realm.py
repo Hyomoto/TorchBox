@@ -34,11 +34,6 @@ class User(Serializer):
         """Check if the provided password matches the stored hashed password."""
         return bcrypt.checkpw(password.encode('utf-8'), self.hashed_password)
     
-    def setNickname(self, nickname: str):
-        """Set a nickname for the user."""
-        self.nickname = nickname
-        return self
-    
     def serialize(self) -> dict:
         """Serialize the user to a dictionary representation."""
         return {

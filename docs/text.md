@@ -39,6 +39,16 @@ Convert a string to lowercase.
 
 **Returns:** *- str: The lowercase string.*
 
+## `pad(text, width, side)`
+Pad a string to the specified width with spaces.
+
+**Parameters:**
+- `text`: *str*
+- `width`: *int*
+- `side`: *str* (default: 'left')
+
+**Returns:** *- str: The padded string.*
+
 ## `proper(text)`
 Capitalize the first letter of a string.
 

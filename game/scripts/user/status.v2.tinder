@@ -1,8 +1,11 @@
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-  from text import column
+  from text import pad, column
 #start
   const HEAD = "`11" + ("-=" * 40) + "`3"
-  "  [[USER.nickname]]'s Status"
+  write "  `1" + pad(USER.nickname + "`3's Status", 50) + pad(str("AP ", USER.actions.current), 10, "right" ) + "  " + str("HP ", USER.hp.current,"/", USER.hp.max)
   write HEAD
-  write column()
+  write column(["Profession", USER.profession], 15, { separator: "|", pad: "  " })
+  ""
+  input "  <`11MORE`3>"
+# end
   call exit()

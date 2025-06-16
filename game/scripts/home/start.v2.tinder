@@ -2,7 +2,7 @@
   const HEAD = "`11" + ("-=" * 40) + "`3"
   const MENU = <"f.ind", "v.iew", "q.uit">
 # start
-  "  [[PROG_NAME]] - `3Town Square"
+  "  `1[[PROG_NAME]] - `3Town Square"
   write HEAD
   "  The streets are crowded with people, and the air is filled with the"
   "  sounds of laughter and conversation.\n"
@@ -13,14 +13,14 @@
   "  `11The Town Square   `15(? for menu)"
   "  (F,M,V,R,Q)"
 # get_input
-  input "Your command, [[USER.nickname]]? "
+  input "`3Your command, `11[[USER.nickname]]`3? "
   set INPUT to match(INPUT, MENU, failed_input)
   jump @INPUT
 # failed_input
   write "Invalid command. Please try again."
   jump get_input
 # view
-  call scene("user/status")
+  call enter("user/status")
 # find else start
 # quit
   stop

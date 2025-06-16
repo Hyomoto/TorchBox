@@ -104,8 +104,8 @@ class BaseAPI(API):
         """
         return len(value)
     
-    @exportable
-    def st(self, env: Crucible, *args: Any) -> str:
+    @exportableAs("str")
+    def concat(self, env: Crucible, *args: Any) -> str:
         """
         Concatenate multiple values into a single string.
         Args:
@@ -235,7 +235,7 @@ class TextAPI(API):
         return text.strip()
 
     @exportable
-    def column(self, env: Crucible, text: List[str], width: int, separator: str = "") -> list:
+    def column(self, env: Crucible, items: List[str], width: int, kwargs: dict) -> list:
         """
         Take a list of strings and combines them, separated by the given width and separator.
         Args:
@@ -245,14 +245,38 @@ class TextAPI(API):
         Returns:
             - str: The formatted string with columns.
         """
+        padding = kwargs.get("pad", "")
+        separator = kwargs.get("separator", "")
         output = ""
-        for i, t in enumerate(text):
+        for i, v in enumerate(items):
+            t = padding + str(v)
             if len(t) > width:
                 t = t[:width]
-            output += t.ljust(width)
-            if separator and i < len(text) - 1:
+            output += str(t).ljust(width)
+            if separator and i < len(items) - 1:
                 output = output[:-1] + separator
         return output
+    
+    @exportable
+    def pad(self, env: Crucible, text: str, width: int, side: str = "left") -> str:
+        """
+        Pad a string to the specified width with spaces.
+        Args:
+            - text (str): The string to pad.
+            - width (int): The total width of the padded string.
+            - side (str): The side to pad on ('left', 'right', or 'both') (default: 'left').
+        Returns:
+            - str: The padded string.
+        """
+        text = str(text)
+        if side == "left":
+            return text.ljust(width)
+        elif side == "right":
+            return text.rjust(width)
+        elif side == "both":
+            return text.center(width)
+        else:
+            raise ValueError("Invalid side argument. Use 'left', 'right', or 'both'.")
 
 class LoginAPI(API):
     """
@@ -299,17 +323,7 @@ class LoginAPI(API):
             - password (str): The new password to set.
         """
         user.setPassword(password)
-
-    @exportable
-    def set_nickname(self, env: Crucible, user: User, nickname: str):
-        """
-        Set the user's nickname.
-        Args:
-            - user (User): The user object to set the nickname for.
-            - nickname (str): The new nickname to set.
-        """
-        user.setNickname(nickname)
-
+    
     @exportable
     def new_user(self, env: Crucible, username: str, password: str) -> User:
         """

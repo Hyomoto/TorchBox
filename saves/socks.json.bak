@@ -2,14 +2,9 @@
     "name": "Socks & Sorcery",
     "description": "A realm for Socks & Sorcery users.",
     "users": {
-        "admin": {
-            "username": "admin",
-            "hashed_password": "$2b$12$DXsPJNyVc00K0jGRyfXeLurU70DggpBhU9gSM65lTQUJWbk3PGox6",
-            "data": {}
-        },
         "test": {
             "username": "test",
-            "hashed_password": "$2b$12$RFvdBHxcTvdja/FSAxHj2.r6ewUbC9b7OJE1Ycpv/Q9rNnnC8QxXq",
+            "hashed_password": "$2b$12$JRrlF8JhSjxEcHNp8LXLVOnj3dNIGve4n0o64UkWa3XmzaPndk84W",
             "data": {
                 "access": 16,
                 "variables": {
@@ -30,17 +25,21 @@
                         "USER": {
                             "type": "dict",
                             "value": {
-                                "nickname": {
+                                "username": {
                                     "type": "str",
                                     "value": "test"
                                 },
+                                "nickname": {
+                                    "type": "str",
+                                    "value": "Dr. Test"
+                                },
                                 "gender": {
                                     "type": "str",
-                                    "value": ""
+                                    "value": "Male"
                                 },
                                 "race": {
                                     "type": "str",
-                                    "value": ""
+                                    "value": "Human"
                                 },
                                 "money": {
                                     "type": "Attribute",
@@ -68,6 +67,14 @@
                                         "max": 5,
                                         "min": 0
                                     }
+                                },
+                                "profession": {
+                                    "type": "NoneType",
+                                    "value": null
+                                },
+                                "inventory": {
+                                    "type": "list",
+                                    "value": []
                                 },
                                 "skills": {
                                     "type": "dict",
@@ -97,6 +104,11 @@
                     }
                 }
             }
+        },
+        "admin": {
+            "username": "admin",
+            "hashed_password": "$2b$12$DXsPJNyVc00K0jGRyfXeLurU70DggpBhU9gSM65lTQUJWbk3PGox6",
+            "data": {}
         }
     }
 }

@@ -21,6 +21,14 @@ DARK_GRAY.
 - `color`: *str*
 
 **Returns:** _None_
+## `str(args)`
+Concatenate multiple values into a single string.
+
+**Parameters:**
+- `args`: *Any*
+
+**Returns:** *- str: The concatenated string.*
+
 ## `debug(message)`
 Print a debug message to the console.
 
@@ -63,13 +71,5 @@ complex inputs.  See the language documentation for more details.
 - `otherwise`: *str | int, optional*
 
 **Returns:** _None_
-## `st(args)`
-Concatenate multiple values into a single string.
-
-**Parameters:**
-- `args`: *Any*
-
-**Returns:** *- str: The concatenated string.*
-
 
 ---

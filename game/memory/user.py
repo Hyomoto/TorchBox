@@ -19,18 +19,13 @@ def classes():
 
 class Attribute(dict, Serializer):
     def __init__(self, current: int, base: Optional[int] = None, max: Optional[int] = None, min: int = 0):
-        self.current = current
-        self.base = base if base is not None else current
-        self.max = max if max is not None else current
-        self.min = min
+        self["current"] = current
+        self["base"] = base if base is not None else current
+        self["max"] = max if max is not None else current
+        self["min"] = min
     
     def serialize(self) -> Dict[str, any]:
-        return {
-            "current": self.current,
-            "base": self.base,
-            "max": self.max,
-            "min": self.min
-        }
+        return {key: value for key, value in self.items()}
     
     @classmethod
     def deserialize(cls, data: Dict[str, any], classes: Optional[dict] = None) -> "Attribute":
@@ -53,6 +48,7 @@ map = {
 
 def new_user_data(nickname: str):
     return {
+        "username" : nickname,
         "nickname" : nickname,
         "gender" : "Male",
         "race" : "Human",
