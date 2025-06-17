@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional, Any
-from tinder.api import API
+from torchbox.api import API
 import re
 
 class APIDoc:

@@ -1,5 +1,5 @@
 from typing import Dict, List, Any
-from tinder.api import API, exportable, exportableAs, import_api as _import_api
+from torchbox.api import API, exportable, exportableAs, import_api as _import_api
 from torchbox.realm import Realm, User
 from .memory.user import Player
 from tinder import Kindling, TinderBurn, Yielded, Jumped, Array
