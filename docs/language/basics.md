@@ -63,7 +63,7 @@ import login
 
 ## Statements
 
-A **statement** is a single instruction, executed in order unless interrupted by control flow. Each line in a script is either a statement, directive, label, or comment. There are no blocks—each line is independent.
+A **statement** is a single instruction keyword followed by a expression pattern and optionally a condition.
 
 **Format:**
 
@@ -109,7 +109,7 @@ Tinder supports both explicit and implicit data access:
 
   * `data.key` looks up `key` in `data` (if `data` is a table)
   * `list.0` looks up index `0` in `list` (if `list` is an array)
-* If the next accessor in a chain can be interpreted as an integer, it’s treated as an array index; otherwise, as a table key.
+
 * **from** syntax provides explicit retrieval:
 
   * `x from [a, b, c]` gets the item at index `x`
