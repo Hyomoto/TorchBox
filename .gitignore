@@ -1,9 +1,10 @@
+ignore/
+saves/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-ignore/
-saves/
 
 # C extensions
 *.so
