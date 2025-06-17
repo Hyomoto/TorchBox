@@ -2,14 +2,9 @@
     "name": "Socks & Sorcery",
     "description": "A realm for Socks & Sorcery users.",
     "users": {
-        "admin": {
-            "username": "admin",
-            "hashed_password": "$2b$12$DXsPJNyVc00K0jGRyfXeLurU70DggpBhU9gSM65lTQUJWbk3PGox6",
-            "data": {}
-        },
         "test": {
             "username": "test",
-            "hashed_password": "$2b$12$iiPdGj5Y2Nys6FLWr1cvjO1YVOvy8b3uwPyh55Rt2CDPMP5j3m2xq",
+            "hashed_password": "$2b$12$q2aCiT.osLldXOwgiF4k3eeNXr2nhX0XNcwDzKpxEDgnyDmHx89/6",
             "data": {
                 "access": 16,
                 "variables": {
@@ -28,7 +23,7 @@
                             "value": "quit"
                         },
                         "USER": {
-                            "type": "dict",
+                            "type": "Player",
                             "value": {
                                 "username": {
                                     "type": "str",
@@ -38,77 +33,111 @@
                                     "type": "str",
                                     "value": "Dr. Test"
                                 },
-                                "gender": {
-                                    "type": "str",
-                                    "value": "Male"
-                                },
-                                "race": {
-                                    "type": "str",
-                                    "value": "Human"
-                                },
                                 "money": {
                                     "type": "Attribute",
+                                    "value": [
+                                        0,
+                                        0,
+                                        9999999,
+                                        0
+                                    ]
+                                },
+                                "attributes": {
+                                    "type": "dict",
                                     "value": {
-                                        "current": 0,
-                                        "base": 0,
-                                        "max": 9999999,
-                                        "min": 0
+                                        "hp": {
+                                            "type": "Attribute",
+                                            "value": [
+                                                100,
+                                                100,
+                                                100,
+                                                0
+                                            ]
+                                        },
+                                        "actions": {
+                                            "type": "Attribute",
+                                            "value": [
+                                                5,
+                                                5,
+                                                5,
+                                                0
+                                            ]
+                                        },
+                                        "combat": {
+                                            "type": "Attribute",
+                                            "value": [
+                                                1,
+                                                1,
+                                                1,
+                                                0
+                                            ]
+                                        },
+                                        "defense": {
+                                            "type": "Attribute",
+                                            "value": [
+                                                1,
+                                                1,
+                                                1,
+                                                0
+                                            ]
+                                        }
                                     }
                                 },
-                                "hp": {
-                                    "type": "Attribute",
+                                "modifiers": {
+                                    "type": "dict",
                                     "value": {
-                                        "current": 100,
-                                        "base": 100,
-                                        "max": 100,
-                                        "min": 0
+                                        "gender": {
+                                            "type": "NamedModifier",
+                                            "value": {
+                                                "name": "Male",
+                                                "modifiers": [
+                                                    [
+                                                        "combat",
+                                                        1,
+                                                        "+"
+                                                    ]
+                                                ]
+                                            }
+                                        },
+                                        "race": {
+                                            "type": "NamedModifier",
+                                            "value": {
+                                                "name": "Human",
+                                                "modifiers": []
+                                            }
+                                        },
+                                        "background": {
+                                            "type": "NamedModifier",
+                                            "value": {
+                                                "name": "Urchin",
+                                                "modifiers": []
+                                            }
+                                        },
+                                        "profession": {
+                                            "type": "NoneType"
+                                        },
+                                        "weapon": {
+                                            "type": "NoneType"
+                                        },
+                                        "armor": {
+                                            "type": "NoneType"
+                                        }
                                     }
-                                },
-                                "actions": {
-                                    "type": "Attribute",
-                                    "value": {
-                                        "current": 5,
-                                        "base": 5,
-                                        "max": 5,
-                                        "min": 0
-                                    }
-                                },
-                                "profession": {
-                                    "type": "NoneType",
-                                    "value": null
                                 },
                                 "inventory": {
                                     "type": "list",
                                     "value": []
-                                },
-                                "skills": {
-                                    "type": "dict",
-                                    "value": {
-                                        "attack": {
-                                            "type": "Attribute",
-                                            "value": {
-                                                "current": 1,
-                                                "base": 1,
-                                                "max": 1,
-                                                "min": 0
-                                            }
-                                        },
-                                        "defense": {
-                                            "type": "Attribute",
-                                            "value": {
-                                                "current": 1,
-                                                "base": 1,
-                                                "max": 1,
-                                                "min": 0
-                                            }
-                                        }
-                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+        },
+        "admin": {
+            "username": "admin",
+            "hashed_password": "$2b$12$ZoLSM.GpPKoPcRqgUwf8luj3AvPh01KBvsFj7nJ2dTxCoEMWcPiDu",
+            "data": {}
         }
     }
 }

@@ -5,7 +5,7 @@ from firestarter import FirestarterError
 from tinder import Tinderstarter, Tinder, Kindling, TinderBurn
 from tinder import Imported, Jumped, Yielded, Returned, Halted
 from tinder.crucible import Crucible, PROTECTED, READ_ONLY, NO_SHADOWING
-from torchbox.api import PermissionHolder, API
+from tinder.api import PermissionHolder, API
 from torchbox.logger import Logger, Log, Critical, Warning, Info, Debug
 from constants import RESET
 from .memory.protected import map as protectedMemory
@@ -65,7 +65,6 @@ class Game(TorchBox):
         # build the memory environment
         self.baseApi = BaseAPI(self)
         self.shared = Crucible(PROTECTED, parent=env).update(globalMemory).update(self.baseApi.export())
-        print(self.shared.variables)
         self.apis: dict[str, API] = import_api(self, exclude=["BaseAPI"])
         self.log(Info(f"{len(self.apis)} APIs loaded: {Ansi.RESET}{', '.join(self.apis.keys())}", "🔌"))
         self.player: SocketUser = None
@@ -188,6 +187,7 @@ class Game(TorchBox):
                             player.send(error + "\n")
                             player.close() # close the connection on error
                             raise e
+                            
                         except EOFError:
                             break
                         break
@@ -234,7 +234,6 @@ class Game(TorchBox):
             tinder = tinderstarter.compile(script, version)
         except FirestarterError as e:
             raise Ember(f"Error compiling '{filepath}':\n{e}")
-        #print(tinder)
         self.add(keyname + filename[0], tinder)
         return tinder
 
@@ -288,11 +287,11 @@ def instantiate_game(debug: bool = False):
                 game.log(Warning(e))
         game.logger.show = True
         game.log(Info(f"Compiled {count} scripts.", "  "))
-        game.log(Info("Server is ready to accept connections.", "  ", Ansi.WHITE))
     return game
 
 def start_server(torchbox: TorchBox):
     torchbox.listen()
+    game.log(Info("Server is ready to accept connections.", "  ", Ansi.WHITE))
     try:
         torchbox.run()
     except Exception:

@@ -39,14 +39,6 @@ Create a new user with the given username and password.
 
 **Returns:** *- User: The newly created user object.*
 
-## `set_nickname(user, nickname)`
-Set the user's nickname.
-
-**Parameters:**
-- `user`: *User*
-- `nickname`: *str*
-
-**Returns:** _None_
 ## `set_password(user, password)`
 Set the user's password.
 

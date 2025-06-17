@@ -1,0 +1,13 @@
+  import realm
+  set users to realm.get_users()
+  set i to 0
+  set user_count to length(users)
+# for
+  jump end if i is user_count
+  set env to i from users
+  set user to env.data.USER
+// refresh user data
+  set user.attributes.actions.current to user.attributes.actions.max
+  set user.attributes.hp.current to 1 if user.attributes.hp.current is 0
+# end else for
+  stop

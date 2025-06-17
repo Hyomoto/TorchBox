@@ -18,8 +18,30 @@ class CrucibleError(Exception):
     """Base class for all Crucible-related exceptions."""
     pass
 
-class CrucibleSuccess(CrucibleError):
-    """Flags a successful write operation."""
+class CrucibleValueNotFound(CrucibleError):
+    """Raised when a variable is not found in the crucible."""
+    def __init__(self, var: str):
+        super().__init__(f"Variable '{var}' not found in the crucible.")
+
+class CrucibleWriteError(CrucibleError):
+    """Raised when a write operation fails."""
+    def __init__(self, var: str, message: str):
+        super().__init__(f"Cannot write '{var}': {message}")
+
+class CrucibleWriteErrorShadowing(CrucibleWriteError):
+    """Raised when a write operation cannot shadow an existing variable."""
+    def __init__(self, var: str):
+        super().__init__(var, "shadowing is not allowed in this scope.")
+
+class CrucibleWriteErrorProtected(CrucibleWriteError):
+    """Raised when a write operation is attempted on a protected variable."""
+    def __init__(self, var: str, is_type: str, violation: str):
+        super().__init__(var, f"variable is {is_type} and cannot be mutated to {violation}.")
+
+class CrucibleWriteErrorReadOnly(CrucibleWriteError):
+    """Raised when a write operation is attempted on a read-only scope."""
+    def __init__(self, var: str):
+        super().__init__(var, "scope is read-only and cannot be written to.")
 
 class Crucible(Serializer):
     parent: Optional["Crucible"]
@@ -81,31 +103,46 @@ class Crucible(Serializer):
         return self
     
     def set(self, var: str, value):
+        def write(var, key, value):
+            if isinstance(var, dict):
+                var[key] = value
+            elif isinstance(var, list):
+                var[int(key)] = value
+            else:
+                setattr(var, key, value)
+                
+        def read(var, key):
+            if isinstance(var, dict):
+                return var[key]
+            elif isinstance(var, list):
+                return var[int(key)]
+            return getattr(var, key)
+            
         def write_to_self(var, value):
             points = var.split('.')
             scope = self.variables
             if points[0] in self.constants:
-                raise CrucibleError(f"Cannot redeclare '{var}': variable is a constant.")
+                raise CrucibleWriteError(var, "variable is a constant.")
             while len(points) > 1:
                 if points[0] not in scope:
                     if self.access & CrucibleAccess.READ_ONLY or self.access & CrucibleAccess.PROTECTED:
                         break # break error to outer scope
-                    scope[points[0]] = {}
-                scope = scope[points[0]]
+                    write(scope, points[0], {})
+                scope = read(scope, points[0])
                 points.pop(0)
             if self.access & READ_ONLY:
-                raise CrucibleError(f"Cannot write '{var}': scope is read-only.")
+                raise CrucibleWriteErrorReadOnly(var)
             if self.access & PROTECTED:
                 if points[0] in scope:
                     if not isinstance(value, type(scope[points[0]])):
-                        raise CrucibleError(f"Cannot mutate '{var}': type {type(scope[points[0]])} → {type(value)} is invalid.")
+                        raise CrucibleWriteErrorProtected(var, type(scope[points[0]]), type(value))
                 else:
-                    raise CrucibleError(f"Cannot write '{var}': scope is protected.")
-            scope[points[0]] = value
+                    raise CrucibleWriteError(var, "scope is protected.")
+            write(scope, points[0], value)
             
         def write_to_base(var, value):
             if not self.parent:
-                raise CrucibleError(f"Cannot write '{var}': no parent scope available.")
+                raise CrucibleWriteError(var, "no parent scope available.")
             self.parent.set(var, value)
         
         def is_shadowing(var):
@@ -119,33 +156,40 @@ class Crucible(Serializer):
 
         try:
             if not self.access & WRITE_TO_BASE:
-                raise CrucibleError(f"Cannot write '{var}': scope is write-only to base.")
+                raise CrucibleWriteError(var, "scope does not allow writing to base.")
             write_to_base(var, value)
         except CrucibleError:
             if self.access & NO_SHADOWING and is_shadowing(var):
                 try:
                     write_to_base(var, value)
                 except CrucibleError:
-                    raise CrucibleError(f"Cannot shadow variable '{var}': no shadowing allowed in this scope.")
+                    raise CrucibleWriteErrorShadowing(var, "shadowing is not allowed in this scope.")
             else:
                 write_to_self(var, value)
 
 
     def get(self, var: str) -> Any:
+        def read(var, key):
+            if isinstance(var, dict):
+                return var[key]
+            elif isinstance(var, list):
+                return var[int(key)]
+            return getattr(var, key)
+            
         def read_from_self(var):
             points = var.split('.')
             scope = self.variables
             for point in points:
                 if point not in scope:
-                    raise CrucibleError(f"Variable '{var}' not found.")
-                scope = scope[point]
+                    raise CrucibleValueNotFound(var)
+                scope = read(scope, point)
             return scope
         
         def read_from_base(var):
             if self.parent:
                 return self.parent.get(var)
-            raise CrucibleError(f"Variable '{var}' not found in base scope.")
-        
+            raise CrucibleValueNotFound(var)
+
         if self.access & CrucibleAccess.READ_FROM_BASE:
             try:
                 return read_from_base(var)

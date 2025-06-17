@@ -1,0 +1,9 @@
+from text import pad
+const attr = USER.attributes
+set OUTPUT to "\n"
+inc OUTPUT "  `1" + pad(a + "`3" + b, 50)
+inc OUTPUT pad(str("AP ", attr.actions), 10, "right" )
+inc OUTPUT "  " + str("HP ", attr.hp,"/", attr.hp.max)
+""
+write "`11" + ("-=" * 40) + "`3"
+call exit()

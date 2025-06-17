@@ -12,8 +12,8 @@ Statement    <- Keyword Condition? Comment?
 
 Keyword      -> Write / Call / Set / Inc / Dec / Input / Yield / Stop / Jump / Return
 Set          <- "set" Identifier (( "to" )? Expression )?
-Inc          <- "inc" Identifier
-Dec          <- "dec" Identifier
+Inc          <- "inc" Identifier Expression?
+Dec          <- "dec" Identifier Expression?
 Input        <- "input" Expression ( "to" Identifier )?
 Write        <- ( String / "write" Expression ) ( "to" Identifier )?
 Yield        <- "yield" ( Expression)?

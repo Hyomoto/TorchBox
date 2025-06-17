@@ -6,7 +6,7 @@ class DeserializationError(Exception):
 
 def serialize(item: Any):
     if item is None:
-        return { "type": "NoneType", "value": None }
+        return { "type": "NoneType" }
     elif isinstance(item, Serializer):
         return { "type": item.__class__.__name__, "value": item.serialize() }
     elif isinstance(item, dict):
@@ -50,11 +50,11 @@ def deserialize(data: Dict[str, Any], classes: Optional[Dict[str, Callable]] = N
             raise DeserializationError(f"Unknown type '{t}' in serialized data.")
 
 class Serializer:
-    def serialize(self) -> Dict[str, Any]:
+    def serialize(self) -> Any:
         """Serialize this class to dictionary representation."""
         pass
 
     @classmethod
-    def deserialize(cls, data: Dict[str, Any], classes: Optional[Dict[str, Any]] = None) -> "Serializer":
+    def deserialize(cls, data: Any, classes: Optional[Dict[str, Any]] = None) -> "Serializer":
         """Deserialize some data to this class."""
         pass

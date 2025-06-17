@@ -103,8 +103,8 @@ class Realm(Serializer):
             raise RealmError(f"User '{user.username}' does not exist in the realm.")
         self.users.remove(user)
 
-    def serialize(self) -> str:
-        """Serialize the realm to a string representation."""
+    def serialize(self) -> dict:
+        """Serialize the realm to a dict suitable to be json-ified."""
         return {
             "name": self.name,
             "description": self.description,
@@ -135,6 +135,8 @@ class Realm(Serializer):
                         os.remove(to + ".bak")
                     os.rename(to, to + ".bak")
                 os.rename(to + ".temp", to)
+            except Exception as e:
+                raise RealmError(f"Failed to save realm: {e}") from e
             finally:
                 self._saving.release()
         self._saving = getattr(self, "_saving", threading.Lock())

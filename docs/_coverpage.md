@@ -8,7 +8,8 @@
 - Dynamic registration of commands and support for default arguments.
 - Arbitrary application state via the Crucible class.
 
-[Language](language.md)
 [GitHub](https://github.com/Hyomoto/TorchBox)
+[Language](language/overview.md)
+[API](api/base.md)
 
 ![color](#564592)

@@ -1,17 +1,19 @@
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-  const HEAD = "`11" + ("-=" * 40) + "`3"
+  from text import column
   const MENU = <"f.ind", "v.iew", "q.uit">
+  const col = { pad: "  " }
 # start
-  "  `1[[PROG_NAME]] - `3Town Square"
-  write HEAD
+  call enter("header", {a: PROG_NAME + " - ",b: "Town Square"})
   "  The streets are crowded with people, and the air is filled with the"
   "  sounds of laughter and conversation.\n"
-  "  (`06F`3)ind a fight                       `06V`3)iew your stats"
-  "  (`06M`3)arketplace                        `06R`3)eturn home"
+  ""
+  write column(["(`06F`3)ind a fight", "(`06V`3)iew your stats"], 40, col )
+//"  (`06F`3)ind a fight                       (`06V`3)iew your stats"
+  "  (`06M`3)arketplace                        (`06R`3)eturn home"
   "  (`11Q`3)uit"
   ""
   "  `11The Town Square   `15(? for menu)"
-  "  (F,M,V,R,Q)"
+  "  (F,M,V,Q)"
 # get_input
   input "`3Your command, `11[[USER.nickname]]`3? "
   set INPUT to match(INPUT, MENU, failed_input)

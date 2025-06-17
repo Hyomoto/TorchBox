@@ -141,7 +141,7 @@ class Yielded(FlowControl):
             raise TinderBurn(f"Illegal yield with carry: expected dict, got '{type(carry).__name__}'.")
         self.carry = carry
     def __str__(self):
-        return f"Yield(line={self.line}, carry={self.carry})"
+        return f"Yielded(line={self.line}, carry={self.carry})"
 
 class Jumped(FlowControl):
     """
@@ -212,7 +212,7 @@ class BangEqual(Symbol):
 class EqualEqual(Symbol):
     pass
 
-class From(Symbol):
+class FromSymbol(Symbol):
     pass
 
 class In(Symbol):
@@ -590,7 +590,7 @@ class Access(AbstractSymbol):
         match symbol:
             case In():
                 raise SymbolReplace(ValueIn(left, right))
-            case From():
+            case FromSymbol():
                 raise SymbolReplace(ValueFrom(left, right))
             case At():
                 raise SymbolReplace(ValueAt(left, right))
@@ -688,12 +688,12 @@ class Call(AbstractSymbol):
 # assignment
 
 class Inc(AbstractSymbol):
-    def __init__(self, identifier: Identifier):
-        raise SymbolReplace(Set(identifier, Add(identifier, Number(1))))
+    def __init__(self, identifier: Identifier, expression: Optional[Kindling] = None):
+        raise SymbolReplace(Set(identifier, Add(identifier, expression or Number("1"))))
 
 class Dec(AbstractSymbol):
-    def __init__(self, identifier: Identifier):
-        raise SymbolReplace(Set(identifier, Subtract(identifier, Number(1))))
+    def __init__(self, identifier: Identifier, expression: Optional[Kindling] = None):
+        raise SymbolReplace(Set(identifier, Subtract(identifier, expression or Number("1"))))
 
 class Set(Keyword):
     """Sets a variable in the environment."""

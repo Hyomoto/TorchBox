@@ -1,7 +1,7 @@
 from typing import Dict, List, Any
-from torchbox.api import API, exportable, exportableAs, import_api as _import_api
+from tinder.api import API, exportable, exportableAs, import_api as _import_api
 from torchbox.realm import Realm, User
-from .memory.user import new_user_data
+from .memory.user import Player
 from tinder import Kindling, TinderBurn, Yielded, Jumped, Array
 from tinder.crucible import Crucible, NO_SHADOWING
 from typing import Optional
@@ -9,6 +9,7 @@ from .canvas import Canvas, Sprite
 from constants import Ansi
 from .sprites import SPRITES
 import random
+import re
 
 def import_api(context: object, include: List[str] = ["all"], exclude: List[str] = []) -> Dict[str, API]:
     return _import_api(__name__, context, include=include, exclude=exclude)
@@ -126,10 +127,15 @@ class BaseAPI(API):
         """
         return self.colors.get(color.lower(), Ansi.RESET)
 
+COLOR_RE = re.compile(r'`(-?\d+)')
+
 class TextAPI(API):
     def __init__(self, context: object):
         super().__init__("text", context)
-    
+
+    def strip_codes(self, text: str) -> str:
+        return COLOR_RE.sub("", text)
+        
     @exportable
     def join(self, env: Crucible, items: list, separator: str = "") -> str:
         """
@@ -235,7 +241,7 @@ class TextAPI(API):
         return text.strip()
 
     @exportable
-    def column(self, env: Crucible, items: List[str], width: int, kwargs: dict) -> list:
+    def column(self, env: Crucible, items: List[str], width: int, kwargs: dict) -> str:
         """
         Take a list of strings and combines them, separated by the given width and separator.
         Args:
@@ -250,9 +256,11 @@ class TextAPI(API):
         output = ""
         for i, v in enumerate(items):
             t = padding + str(v)
-            if len(t) > width:
-                t = t[:width]
-            output += str(t).ljust(width)
+            s = self.strip_codes(t)
+            if len(s) > width:
+                s = s[:width]
+                t = t[:width - len(s)]
+            output += t + " " * (width - len(s))
             if separator and i < len(items) - 1:
                 output = output[:-1] + separator
         return output
@@ -335,7 +343,7 @@ class LoginAPI(API):
             - User: The newly created user object.
         """
         user = self.context.player.environment
-        user["USER"] = new_user_data(username) # Initialize user data
+        user["USER"] = Player(username) # Initialize user data
         return self.context.realm.addUser(User(username, password, user))
     
     @exportable
@@ -532,3 +540,20 @@ class SpritesAPI(API):
         else:
             exported = SPRITES
         return exported
+
+class RealmAPI(API):
+    """
+    The Realm API provides access to the realm, allowing you to interact with users, scenes, and other
+    realm-related functionality. It requires the 'realm' permission to be used.
+    """
+    def __init__(self, context: object):
+        super().__init__("realm", context, permissions=["realm"])
+
+    @exportable
+    def get_users(self, env: Crucible) -> List[User]:
+        """
+        Get a list of all users in the realm.
+        Returns:
+            List[User]: A list of User objects representing all users in the realm.
+        """
+        return list[self.context.realm.users]
