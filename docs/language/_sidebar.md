@@ -1,4 +1,4 @@
-<div><a href="/" style="text-decoration: none; color: inherit;">
+<div><a href="/TorchBox" style="text-decoration: none; color: inherit;">
 	<img src="tinder.svg" alt="drawing" width="32" />
 	<strong>Tinder</strong>
 </a></div>

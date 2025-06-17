@@ -1,5 +1,5 @@
 <center>
-	<a href="/" style="text-decoration: none; color: inherit;">
+	<a href="/TorchBox" style="text-decoration: none; color: inherit;">
 		<div>
 			<img src="tinder.svg" alt="drawing" width="32" />
 		</div><font size="4">Tinder</font>
