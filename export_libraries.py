@@ -1,9 +1,9 @@
 from typing import List, Dict, Optional, Any
-from torchbox.api import API
+from tinder.library import Library, import_libraries
 import re
 
-class APIDoc:
-    """Class to represent API documentation."""
+class LibraryDoc:
+    """Class to represent Library documentation."""
     def __init__(self, name: str, description: str, methods: List['MethodDoc'], permissions: Optional[List[str]] = None):
         self.name = name
         self.description = description
@@ -12,12 +12,13 @@ class APIDoc:
 
 class MethodDoc:
     """Class to represent method documentation."""
-    def __init__(self, name: str, description: str, parameters: Dict[str, 'ParameterDoc'], kwargs: Optional[Dict[str, 'ParameterDoc']] = None, return_type: Optional[str] = None):
+    def __init__(self, name: str, description: str, parameters: Dict[str, 'ParameterDoc'], kwargs: Optional[Dict[str, 'ParameterDoc']] = None, return_type: Optional[str] = None, resolvable: bool = False):
         self.name = name
         self.description = description
         self.parameters = parameters
         self.kwargs = kwargs
         self.return_type = return_type
+        self.resolvable = resolvable
 
 class ParameterDoc:
     """Class to represent parameter documentation."""
@@ -27,7 +28,7 @@ class ParameterDoc:
         self.desc = desc
         self.default = default
 
-def export_api(apis: Dict[str, API]):
+def export_libraries(libraries: Dict[str, Library]):
     def make_navbar(sections: List[str]) -> str:
         header = "| Jump To | " + " | ".join(f"[{s}](#{s.lower()})" for s in sections) + " |"
         sep = "|" + "---------|" * (len(sections) + 1)
@@ -100,6 +101,9 @@ def export_api(apis: Dict[str, API]):
                     default=default
                 )
         return results
+    
+    def extract_resolvable(value) -> bool:
+        return getattr(value, '_resolvable', False)
 
     def extract_return_type(doc):
         if not doc:
@@ -118,11 +122,11 @@ def export_api(apis: Dict[str, API]):
         sections = re.split(r'\n\s*(?:Kwargs|Args|Returns):', doc, maxsplit=1)
         return sections[0].strip()
 
-    docs: Dict[str, APIDoc] = {}
+    docs: Dict[str, LibraryDoc] = {}
 
-    for name, item in apis.items():
+    for name, item in libraries.items():
         items = item.export()
-        doc = APIDoc(
+        doc = LibraryDoc(
             name=name,
             description=item.__doc__,
             methods=[],
@@ -136,7 +140,8 @@ def export_api(apis: Dict[str, API]):
                     description=clean_header(value.__doc__),
                     parameters=extract_args(value.__doc__),
                     kwargs = extract_kwargs(value.__doc__),
-                    return_type=extract_return_type(value.__doc__)
+                    return_type = extract_return_type(value.__doc__),
+                    resolvable = extract_resolvable(value)
                 ))
             else:
                 methods.append(MethodDoc(
@@ -148,44 +153,48 @@ def export_api(apis: Dict[str, API]):
         docs[name] = doc
 
     markdown = {}
-    for api_name, api_doc in docs.items():
+    for library_name, library_doc in docs.items():
         output = ""
-        output += f"# API: {markdown_escape(api_name)}\n"
+        output += f"# Library: {markdown_escape(library_name)}\n"
         output += "---\n"
-        #output += make_navbar([name.name for name in api_doc.methods]) + "\n"
-        if api_doc.permissions:
-            output += "\n**Requires Permissions:**[" + ", ".join(f"`{perm}`" for perm in api_doc.permissions) + "]\n"
-        desc = api_doc.description or "\n_No description provided._"
+        #output += make_navbar([name.name for name in library_doc.methods]) + "\n"
+        if library_doc.permissions:
+            output += "\n**Requires Permissions:**[" + ", ".join(f"`{perm}`" for perm in library_doc.permissions) + "]\n"
+        desc = library_doc.description or "\n_No description provided._"
         output += f"{desc}\n"
-        for method in api_doc.methods:
+        for method in library_doc.methods:
             signature = f"`{method.name}("
             params = [name for name in method.parameters.keys()] if method.parameters else []
             if method.kwargs:
                 params.append("**kwargs")
-            output += f"## {signature}{', '.join(params)})`\n"
-            mdesc = method.description or "_No description provided._"
-            output += f"{mdesc}\n"
+            output += f"## {signature}{', '.join(params)})`\n\n"
+            mdesc = (method.description or "_No description provided._") + "\n\n"
+            output += f"> {mdesc}\n"
             if method.parameters:
-                output += "\n**Parameters:**\n"
+                output += "#### **Parameters:**\n\n"
+                output += "| Name | Type | Default |\n"
+                output += "| ---- | ---- | ------- |\n"
                 for pname, pval in method.parameters.items():
-                    output += f"- `{pname}`: *{pval.type}*{f' (default: {pval.default})' if pval.default else ''}\n"
+                    output += f"| {pname} | `{pval.type}` | {pval.default or ''} |\n"
             if method.kwargs:
-                output += "\n**Kwargs:**\n"
+                output += "#### **Kwargs:**\n\n"
+                output += "| Name | Type | Default |\n"
+                output += "| ---- | ---- | ------- |\n"
                 for kname, kval in method.kwargs.items():
-                    output += f"- `{kname}`: *{kval.type}*{f' (default: {kval.default})' if kval.default else ''}\n"
-            if method.return_type:
-                output += f"\n**Returns:** *{method.return_type}*\n"
-            else:
-                output += "\n**Returns:** _None_"
-            output += "\n"
+                    output += f"| {kname} | `{kval.type}` | {kval.default or ''} |\n"
+            output += f"\n#### **Returns:**\n\n" + (f"*{method.return_type}*" if method.return_type else "_None_")
+            output += "\n\n"
+            if method.resolvable:
+                output += "?> This method can be pure.\n\n"
+            output += "\n\n"
         output += "\n---\n"
-        markdown[api_name] = output
+        markdown[library_name] = output
 
     # generate pages
     for name, doc in markdown.items():
         with open(f"./docs/{name}.md", "w", encoding="utf-8") as f:
             f.write(doc)
-        print(f"API documentation generated in ./docs/API/{name}.md")
+        print(f"Library documentation generated in ./docs/libraries/{name}.md")
 
     # generate sidebar
     with open("./docs/_sidebar.md", "w", encoding="utf-8") as f:
@@ -200,6 +209,6 @@ def export_api(apis: Dict[str, API]):
             f.write(f"- [{name}]({name}.md)\n")
 
 if __name__ == "__main__":
-    from game.apis import import_api
-    apis = import_api({})
-    export_api(apis)
+    from game.libraries import import_libraries
+    libraries = import_libraries({})
+    export_libraries(libraries)

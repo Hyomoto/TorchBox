@@ -5,45 +5,46 @@ Rule         -> ( Comment / From / Import / Const / Interrupt / Goto / Statement
 From         <- "from" Identifier "import" Identifier ( "," Identifier )*
 Import       <- "import" Identifier ( "as" Identifier )?
 Interrupt    <- "catch" String "at"? Identifier
-Comment      -- "//" ~'[^\n]*'
+Comment      -- "``" ~'[^\n]*'
 Goto         <- "#" Identifier ( "else" Identifier )?
 Const        <- "const" Identifier ( "is" / "=" ) ( Expression )
 Statement    <- Keyword Condition? Comment?
 
-Keyword      -> Write / Call / Set / Inc / Dec / Input / Yield / Stop / Jump / Return
+Keyword      -> Write / Call / Put / Set / Inc / Dec / Swap / Input / Yield / Stop / Jump / Return
+Put          <- "put" Expression ( "Before" / "After" ) Identifier
 Set          <- "set" Identifier (( "to" )? Expression )?
 Inc          <- "inc" Identifier Expression?
 Dec          <- "dec" Identifier Expression?
+Swap         <- "swap" Identifier ","? Identifier
 Input        <- "input" Expression ( "to" Identifier )?
 Write        <- ( String / "write" Expression ) ( "to" Identifier )?
 Yield        <- "yield" ( Expression)?
 Stop         <- "stop"
-Jump         <- "jump" ( "to" )? ( Lookup / Number / String )
+Jump         <- "jump" ( "to" )? Expression
 Call         <- "call" Function
 Return       <- "return"
 
 Condition    <- "if" Expression
-Expression   -> Access
-Access       ~> Or (( In / FromSymbol / At ) ( Array / Lookup ))?
+Expression   -> Indirect / Access
+Indirect     <- "@" Access
+Access       ~> Or (( In / FromSymbol / At ) ( Access ))?
 Or           ~> And ( or And )*
 And          ~> Binary ( and Binary )*
-Binary       ~> Unary (( EqualEqual / BangEqual / LeftAngleBracket / RightAngleBracket / LeftAngleBracketEqual / RightAngleBracketEqual / Times / SlashSlash / Slash / Plus / Minus ) Unary)*
+Binary       ~> Unary (( EqualEqual / BangEqual / LeftAngleBracketEqual / RightAngleBracketEqual / LeftAngleBracket / RightAngleBracket / Times / SlashSlash / Slash / Plus / Minus ) Unary)*
 Unary        ~> ( Bang / Minus )? Primary
-Primary      -> Constant / String / Number / Indirect / Function / Identifier / Table / Array / Batch / Group
+Primary      -> Constant / String / Number / Function / Identifier / Table / Array / Group
 
 Lookup       -> Identifier / Indirect
-Group        -> "(" Expression ")"
-[Indirect]   <- ws? "@" !ws Identifier ws?
-Batch        <- "<" Arguments ","? ">"
+Group        -> "(" Access ")"
 Array        <- "[" Arguments ","? "]"
 Table        <- "{" KeyValuePair ( "," KeyValuePair )* ","? "}"
-KeyValuePair <- Identifier ":" Expression
+KeyValuePair <- Identifier (":" Access)?
 Constant     <> True / False
 True         <- "True"
 False        <- "False"
 Function     <- Identifier "(" Arguments? ")"
 ws           -- ~'[ \\t]+' # ' ' or '\t'
-Arguments    -> Expression ( "," Expression )* 
+Arguments    -> Access ( "," Access )* 
 
 Identifier   <- ~"[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*"
 String       <> ~'"(?:[^"\\]|\\.)*"' / ~"'(?:[^'\\]|\\.)*'"
@@ -62,6 +63,8 @@ RightAngleBracketEqual <- ">="
 [Minus]      <- ws? "-" ws? / ws "minus" ws
 [Bang]       <- ws "not" ws / ws? "!" !ws
 [FromSymbol] <- ws "from" ws / "<-"
+[After]      <- ws "after" ws / ">" # after or >
+[Before]     <- ws "before" ws / "<" # before or <
 [In]         <- ws "in" ws / "?" # in or ?
 [At]         <- ws "at" ws / "@"
 [or]         -- ws "or" ws / ws? "|" ws?

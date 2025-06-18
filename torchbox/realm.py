@@ -1,7 +1,7 @@
 import os
 from typing import Set, Optional
 from tinder.crucible import Crucible, CrucibleAccess
-from .serializer import Serializer
+from serializer import Serializer
 import threading
 import bcrypt
 import json

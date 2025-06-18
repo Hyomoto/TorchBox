@@ -5,13 +5,13 @@ from firestarter import FirestarterError
 from tinder import Tinderstarter, Tinder, Kindling, TinderBurn
 from tinder import Imported, Jumped, Yielded, Returned, Halted
 from tinder.crucible import Crucible, PROTECTED, READ_ONLY, NO_SHADOWING
-from torchbox.api import PermissionHolder, API
+from tinder.library import PermissionHolder, Library
 from torchbox.logger import Logger, Log, Critical, Warning, Info, Debug
 from constants import RESET
 from .memory.protected import map as protectedMemory
 from .memory.globals import map as globalMemory
 from .memory.user import map as userMemory, classes as user_classes
-from .apis import import_api, BaseAPI
+from .libraries import import_libraries, BaseLibrary
 from pathlib import Path
 from constants import Ansi
 import threading
@@ -38,12 +38,16 @@ class Scene(Tinder, PermissionHolder):
         list = '\n\t'.join(repr(inst) for inst in self.instructions)
         return f"Scene[lines={len(self)}, permissions={self.permissions}](\n\t{list}\n)"
 
-def getAllScripts():
+def get_scripts(path: str = ""):
+    path = "./game/scripts/" + path
     scripts = []
-    for root, _, files in os.walk("./game/scripts"):
-        for file in files:
-            if file.endswith(".tinder"):
-                scripts.append(os.path.join(root, file))
+    if os.path.isdir(path):
+        for root, _, files in os.walk(path):
+            for file in files:
+                if file.endswith(".tinder"):
+                    scripts.append(os.path.join(root, file))
+    elif os.path.isfile(path) and path.endswith(".tinder"):
+        scripts.append(path)
     return scripts
 
 def parse(env: Crucible, value: str):
@@ -63,10 +67,10 @@ class Game(TorchBox):
         super().__init__(realm, env, Logger(length = 255, output="./logs/torchbox.log"))
         self.scenes = {}
         # build the memory environment
-        self.baseApi = BaseAPI(self)
-        self.shared = Crucible(PROTECTED, parent=env).update(globalMemory).update(self.baseApi.export())
-        self.apis: dict[str, API] = import_api(self, exclude=["BaseAPI"])
-        self.log(Info(f"{len(self.apis)} APIs loaded: {Ansi.RESET}{', '.join(self.apis.keys())}", "🔌"))
+        self.baseLibrary = BaseLibrary(self)
+        self.shared = Crucible(PROTECTED, parent=env).update(globalMemory).update(self.baseLibrary.export())
+        self.libraries: dict[str, Library] = import_libraries(self, exclude=["BaseLibrary"])
+        self.log(Info(f"{len(self.libraries)} Libraries loaded: {Ansi.RESET}{', '.join(self.libraries.keys())}", "🔌"))
         self.player: SocketUser = None
         self.env = None
         self.running = True
@@ -85,9 +89,9 @@ class Game(TorchBox):
                     try:
                         line = script.run(line, local)
                     except Imported as e:
-                        if e.library not in self.apis:
+                        if e.library not in self.libraries:
                             raise TinderBurn(f"Library '{e.library}' not found.")
-                        lib = self.apis.get(e.library)
+                        lib = self.libraries.get(e.library)
                         if not lib.hasPermission(script):
                             raise TinderBurn(f"Library '{e.library}' cannot be imported in this context.")
                         if e.request:
@@ -221,7 +225,7 @@ class Game(TorchBox):
                 return SocketUser(client, self.queue, self.log)
         return super().getHandler(client, of)
 
-    def compile(self, filepath: str) -> Scene:
+    def compile(self, filepath: str, env: dict = {}) -> Scene:
         """Compile a script and add it to the game."""
         keyname, filename = os.path.split(filepath)
         filename = filename.split(".")
@@ -231,7 +235,7 @@ class Game(TorchBox):
         version = filename[-2]
         script = get_file(filepath)
         try:
-            tinder = tinderstarter.compile(script, version)
+            tinder = tinderstarter.compile(script, version, env)
         except FirestarterError as e:
             raise Ember(f"Error compiling '{filepath}':\n{e}")
         self.add(keyname + filename[0], tinder)
@@ -246,7 +250,7 @@ class Game(TorchBox):
             return self.scenes[name]
         raise ValueError(f"Tinder '{name}' not found.")
 
-def instantiate_game(debug: bool = False):
+def instantiate_game(path: str = "", debug = False):
     """
     Instantiate the game, compile all scripts, and return the game instance.
 
@@ -264,29 +268,31 @@ def instantiate_game(debug: bool = False):
     game.log(Info("Starting TorchBox server...", "🔥"))
     game.log(Info(f"Realm: {Ansi.GREEN}{realm.name}{Ansi.RESET}", f"🏰", Ansi.WHITE))
     game.debug = debug
-    if not debug:
-        permissions = []
-        for api in game.apis.values():
-            if api.permissions:
-                permissions.extend(api.permissions)
-        scripts = getAllScripts()
-        game.log(Info(f"Found {len(scripts)} scripts.", "📜"))
-        count = 0
-        game.logger.show = False
-        for script in scripts:
-            try:
-                # grab start of path up until first /
-                scene = game.compile(script)
-                path = Path(script).parts
-                if len(path) > 3 and path[2] in permissions:
-                    scene.permissions = [path[2]]
-                count += 1
-            except (Ember, TinderBurn) as e:
-                text = str(Warning(f"Error compiling '{script}': {Ansi.RESET}{e}"))
-                print(text)
-                game.log(Warning(e))
-        game.logger.show = True
-        game.log(Info(f"Compiled {count} scripts.", "  "))
+
+    permissions = []
+    for library in game.libraries.values():
+        if library.permissions:
+            permissions.extend(library.permissions)
+    scripts = get_scripts(path)
+    game.log(Info(f"Found {len(scripts)} scripts.", "📜"))
+    count = 0
+    game.logger.show = False
+    env = {k: v for k, v in game.baseLibrary.export().items() if getattr(v, "_resolvable", False)}
+    for script in scripts:
+        try:
+            # grab start of path up until first /
+            scene = game.compile(script, env)
+            path = Path(script).parts
+            if len(path) > 3 and path[2] in permissions:
+                scene.permissions = [path[2]]
+            count += 1
+        except (Ember, TinderBurn) as e:
+            text = str(Warning(f"Error compiling '{script}': {Ansi.RESET}{e}"))
+            print(text)
+            game.log(Warning(e))
+    game.logger.show = True
+    game.log(Info(f"Compiled {count} scripts.", "  "))
+    
     return game
 
 def start_server(torchbox: TorchBox):

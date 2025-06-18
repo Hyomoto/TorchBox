@@ -10,6 +10,6 @@
 
 [GitHub](https://github.com/Hyomoto/TorchBox)
 [Language](language/overview.md)
-[API](api/base.md)
+[Libraries](libraries/base.md)
 
 ![color](#564592)

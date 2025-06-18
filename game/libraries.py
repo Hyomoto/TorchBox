@@ -1,5 +1,5 @@
 from typing import Dict, List, Any
-from torchbox.api import API, exportable, exportableAs, import_api as _import_api
+from tinder.library import Library, exportable, exportableAs, import_libraries as _import_libraries
 from torchbox.realm import Realm, User
 from .memory.user import Player
 from tinder import Kindling, TinderBurn, Yielded, Jumped, Array
@@ -11,12 +11,16 @@ from .sprites import SPRITES
 import random
 import re
 
-def import_api(context: object, include: List[str] = ["all"], exclude: List[str] = []) -> Dict[str, API]:
-    return _import_api(__name__, context, include=include, exclude=exclude)
+def import_libraries(context: object, include: List[str] = ["all"], exclude: List[str] = []) -> Dict[str, Library]:
+    return _import_libraries(__name__, context, include=include, exclude=exclude)
 
-class BaseAPI(API):
+def resolvable(fn):
+    fn._resolvable = True
+    return fn
+
+class BaseLibrary(Library):
     """
-    The base API is always available and provides basic functionality for scene management, input matching,
+    The base Library is always available and provides basic functionality for scene management, input matching,
     debugging, and string manipulation.  It also provides access to ANSI color codes.
     """
     def __init__(self, context: object):
@@ -26,7 +30,7 @@ class BaseAPI(API):
     @exportableAs("scene")
     def changeScene(self, env: Crucible, scene: str, carry: Optional[dict] = None):
         """
-        Change the scene for the player, setting up the local environment.
+        Change the scene for the player.  The dictionary 'carry' will pass those keys to the new scene.
         Args:
             - scene (str): The name of the scene to change to.
             - carry (dict, optional): Additional data to carry over to the new scene.
@@ -43,7 +47,8 @@ class BaseAPI(API):
     @exportableAs("enter")
     def enterScene(self, env: Crucible, scene: str, carry: Optional[dict] = None):
         """
-        Push a new scene onto the stack, can be returned to using exit.
+        Push a new scene onto the stack, can be returned to using exit.  This allows for nested scenes and
+        scene transitions.  The dictionary 'carry' will pass those keys to the new scene.
         Args:
             - scene (str): The name of the scene to enter.
             - carry (dict, optional): Additional data to carry over to the new scene.
@@ -61,7 +66,8 @@ class BaseAPI(API):
     def exitScene(self, env: Crucible, carry: Optional[dict] = None):
         """
         Pops the current scene off the stack, returning to the previous scene.  If there is no previous
-        scene, it will close the user's session.
+        scene, it will close the user's session.  This allows for scene transitions and returning to
+        previous scenes.  The dictionary 'carry' will pass those keys to the previous scene.
         Args:
             - carry (dict, optional): Additional data to carry over to the previous scene.
         """
@@ -70,20 +76,44 @@ class BaseAPI(API):
         stack.pop()
         raise Yielded(line=0, carry=carry)  # Yield to allow the game loop to continue
 
-    @exportableAs("match")
-    def matchInput(self, env: Crucible, input: str, matches: dict, otherwise: str | int = None):
+    @resolvable
+    @exportableAs("keys")
+    def keyList(self, env: Crucible, value: dict) -> list:
         """
-        Match the input against a dictionary of possible matches and returns the corresponding value, or
-        jumps to otherwise if no match is found. Using a <batch> will allow you to match against more
-        complex inputs.  See the language documentation for more details.
+        Return a list of keys from the given dictionary.
         Args:
-            - input (str): The input to match.
-            - matches (dict): A dictionary of possible matches.
-            - otherwise (str | int, optional): The value to return if no match is found.
+            - value (dict): The dictionary to get keys from.
+        Returns:
+            - list: A list of keys from the dictionary.
         """
-        if input not in matches and otherwise:
-            raise Jumped(otherwise)
-        return matches.get(input)
+        return list(value.keys())
+
+    @resolvable
+    @exportable
+    def batch(self, env: Crucible, *items: str) -> dict:
+        """
+        Create a batch mapping from a list of strings, where each string is split by '.' and the parts are
+        concatenated to form keys.  If the key begins with a '_', it will be stripped and used as a default
+        argument in the map.
+        Args:
+            - items (str): A variable number of strings to create the batch mapping from.
+        Returns:
+            - dict: A dictionary mapping each concatenated key to its full string.
+        """
+        map = {}
+        for item in items:
+            if not isinstance(item, str):
+                raise TinderBurn(f"Batch item must be a String, got {type(item).__name__}.")
+            if item.startswith("_"):
+                map[item[:1]] = item[1:]  # Use the item as a default argument
+            else:
+                parts = item.split('.')
+                full = "".join(parts)
+                key = ""
+                for part in parts:
+                    key += part
+                    map[key] = full
+        return map
     
     @exportable
     def debug(self, env: Crucible, message: str):
@@ -93,7 +123,8 @@ class BaseAPI(API):
             - message (str): The debug message to print.
         """
         print(f"[debug] {message}")
-    
+
+    @resolvable
     @exportable
     def len(self, env: Crucible, value: Any):
         """
@@ -104,7 +135,8 @@ class BaseAPI(API):
             - int: The length of the value.
         """
         return len(value)
-    
+
+    @resolvable
     @exportableAs("str")
     def concat(self, env: Crucible, *args: Any) -> str:
         """
@@ -115,7 +147,8 @@ class BaseAPI(API):
             - str: The concatenated string.
         """
         return ''.join(str(arg) for arg in args)
-    
+
+    @resolvable
     @exportable
     def color(self, env: Crucible, color: str):
         """
@@ -129,13 +162,13 @@ class BaseAPI(API):
 
 COLOR_RE = re.compile(r'`(-?\d+)')
 
-class TextAPI(API):
+class TextLibrary(Library):
     def __init__(self, context: object):
         super().__init__("text", context)
 
     def strip_codes(self, text: str) -> str:
         return COLOR_RE.sub("", text)
-        
+
     @exportable
     def join(self, env: Crucible, items: list, separator: str = "") -> str:
         """
@@ -147,7 +180,7 @@ class TextAPI(API):
             - str: The joined string.
         """
         return separator.join(str(item) for item in items)
-    
+
     @exportable
     def split(self, env: Crucible, text: str, separator: str = None) -> list:
         """
@@ -159,7 +192,7 @@ class TextAPI(API):
             - list: The list of items.
         """
         return text.split(separator) if separator else text.split()
-    
+
     @exportable
     def replace(self, env: Crucible, text: str, old: str, new: str) -> str:
         """
@@ -172,7 +205,7 @@ class TextAPI(API):
             - str: The modified string.
         """
         return text.replace(old, new)
-    
+
     @exportable
     def find(self, env: Crucible, text: str, substring: str, start: int = 0, end: int = -1) -> int:
         """
@@ -195,7 +228,7 @@ class TextAPI(API):
             - str: The uppercase string.
         """
         return text.upper()
-    
+
     @exportable
     def lower(self, env: Crucible, text: str) -> str:
         """
@@ -206,7 +239,7 @@ class TextAPI(API):
             - str: The lowercase string.
         """
         return text.lower()
-    
+
     @exportable
     def proper(self, env: Crucible, text: str) -> str:
         """
@@ -217,7 +250,7 @@ class TextAPI(API):
             - str: The capitalized string.
         """
         return text.capitalize()
-    
+
     @exportable
     def title(self, env: Crucible, text: str) -> str:
         """
@@ -228,7 +261,7 @@ class TextAPI(API):
             - str: The title-cased string.
         """
         return text.title()
-    
+
     @exportable
     def strip(self, env: Crucible, text: str) -> str:
         """
@@ -264,7 +297,7 @@ class TextAPI(API):
             if separator and i < len(items) - 1:
                 output = output[:-1] + separator
         return output
-    
+
     @exportable
     def pad(self, env: Crucible, text: str, width: int, side: str = "left") -> str:
         """
@@ -286,10 +319,10 @@ class TextAPI(API):
         else:
             raise ValueError("Invalid side argument. Use 'left', 'right', or 'both'.")
 
-class LoginAPI(API):
+class LoginLibrary(Library):
     """
-    API for user login and management, including finding users, checking passwords, setting passwords,
-    and creating new users.  This API requires the 'login' permission to be used.
+    Library for user login and management, including finding users, checking passwords, setting passwords,
+    and creating new users.  This Library requires the 'login' permission to be used.
     """
     def __init__(self, context: object):
         super().__init__("login", context, permissions=["login"])
@@ -331,7 +364,7 @@ class LoginAPI(API):
             - password (str): The new password to set.
         """
         user.setPassword(password)
-    
+
     @exportable
     def new_user(self, env: Crucible, username: str, password: str) -> User:
         """
@@ -345,7 +378,7 @@ class LoginAPI(API):
         user = self.context.player.environment
         user["USER"] = Player(username) # Initialize user data
         return self.context.realm.addUser(User(username, password, user))
-    
+
     @exportable
     def delete_user(self, env: Crucible, username: str):
         """
@@ -356,7 +389,7 @@ class LoginAPI(API):
         user = self.context.realm.getUser(username)
         self.context.realm.removeUser(user)
 
-class RandomAPI(API):
+class RandomLibrary(Library):
     def __init__(self, context: object):
         super().__init__("random", context)
 
@@ -376,8 +409,8 @@ class RandomAPI(API):
     def shuffle(self, env: Crucible, x: list):
         random.shuffle(x)
         return x
-    
-class CanvasAPI(API):
+
+class CanvasLibrary(Library):
     """
     Imports the canvas module and exposes its methods.  It's important to note that canvas.render() returns
     a Sprite object, so it must be converted to a string using concat() to be displayed properly.  This allows
@@ -403,7 +436,7 @@ class CanvasAPI(API):
             Canvas: A new canvas object with the specified dimensions.
         """
         return Canvas(width, height)
-    
+
     @exportable
     def write(self, env: Crucible, canvas: Canvas, text: str, kwargs: dict = None):
         """
@@ -527,7 +560,7 @@ class CanvasAPI(API):
         """
         return canvas.render()  # Return the string representation of the rendered canvas.
 
-class SpritesAPI(API):
+class SpritesLibrary(Library):
     """Has no exportable methods, but overrides export to allow loading from the sprites module."""
     def __init__(self, context: object):
         super().__init__("sprites", context)
@@ -541,9 +574,9 @@ class SpritesAPI(API):
             exported = SPRITES
         return exported
 
-class RealmAPI(API):
+class RealmLibrary(Library):
     """
-    The Realm API provides access to the realm, allowing you to interact with users, scenes, and other
+    The Realm Library provides access to the realm, allowing you to interact with users, scenes, and other
     realm-related functionality. It requires the 'realm' permission to be used.
     """
     def __init__(self, context: object):

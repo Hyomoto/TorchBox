@@ -215,6 +215,12 @@ class EqualEqual(Symbol):
 class FromSymbol(Symbol):
     pass
 
+class Before(Symbol):
+    pass
+
+class After(Symbol):
+    pass
+
 class In(Symbol):
     pass
 
@@ -297,16 +303,6 @@ class Identifier(Value):
     def transmute(self, env: Crucible):
         return env.get(self.value)
 
-class Indirect(Identifier):
-    """A lookup that directs to another lookup in the environment."""
-    def __init__(self, value: Value | str ):
-        if isinstance(value, Value):
-            value = value.value
-        super().__init__(value)
-    def transmute(self, env: Crucible):
-        lookup = super().transmute(env)
-        return env.get(lookup)
-
 class Array(Value):
     """A group of values that can be retrieved as a list."""
     def __init__(self, *items: Kindling):
@@ -335,11 +331,11 @@ class Array(Value):
 
 class KeyValuePair(Value):
     """A key-value pair for use in Tables."""
-    def __init__(self, key: Identifier | String, value: Kindling):
+    def __init__(self, key: Identifier | String, value: Optional[Kindling] = None):
         self.key = key.value
-        self.value = value
+        self.value = value or key
     @property
-    def type(self) -> Type[Tuple]:
+    def type(self):
         return KeyValuePair
     def transmute(self, env: Crucible):
         value = self.value.transmute(env)
@@ -357,6 +353,8 @@ class Table(Value):
     def __getitem__(self, key: str):
         if key in self.table:
             return self.table[key]
+        if "_" in self.table:
+            return self.table["_"]
         raise KeyError(f"Key '{key}' not found in Table.")
     def __setitem__(self, key: str, value: Kindling):
         self.table[key] = value
@@ -367,28 +365,6 @@ class Table(Value):
     def __repr__(self):
         items = ', '.join(f"{key}={value}" for key, value in self.table.items())
         return f"Table({{{items}}})"
-
-class Batch(Value):
-    def __init__(self, *items: Kindling):
-        self.items = list(items)
-    def transmute(self, env: Crucible):
-        map = {}
-        for item in self.items:
-            item = item.transmute(env)
-            if not isinstance(item, str):
-                raise TinderBurn(f"Batch item must be a String, got {type(item).__name__}.")
-            parts = item.split('.')
-            full = "".join(parts)
-            key = ""
-            for part in parts:
-                key += part
-                map[key] = full
-        return map
-    @property
-    def type(self) -> Type["Batch"]:
-        return Batch
-    def __repr__(self):
-        return f"Batch({self.items})"
 
 # kindling operations
 
@@ -585,8 +561,18 @@ class Or(AbstractBinary):
     def __repr__(self):
         return super().__repr__().replace("%s", "or")
 
+class Indirect(Kindling):
+    """Takes the expression evaluation and converts it to a lookup in the environment."""
+    def __init__(self, value: Kindling ):
+        self.value = value
+    def transmute(self, env: Crucible):
+        lookup = self.value.transmute(env)
+        return env.get(lookup)
+    def __repr__(self):
+        return f"Indirect({self.value})"
+
 class Access(AbstractSymbol):
-    def __init__(self, left: Kindling, symbol: Symbol, right: Array | Table | Identifier):
+    def __init__(self, left: Kindling, symbol: Symbol, right: Kindling):
         match symbol:
             case In():
                 raise SymbolReplace(ValueIn(left, right))
@@ -599,25 +585,30 @@ class Access(AbstractSymbol):
 
 class ValueFrom(AbstractBinary):
     """Returns where the value is found in the right operand, or None if not found."""
-    def __init__(self, left: Kindling, right: Array | Table | Identifier ):
+    def __init__(self, left: Kindling, right: Kindling ):
         super().__init__(left, right)
     def transmute(self, env: Crucible):
         right = self.right.transmute(env)
         left = self.left.transmute(env)
-        if isinstance(right, Array):
+        if isinstance(right, list):
             if not isinstance(left, (int, float)):
                 raise TinderBurn(f"Left operand must be an integer index, got {type(left).__name__}.")
-            return right[int(left)] if left in right else None
-        if isinstance(right, Table):
-            for key, value in right.table.items():
-                if value.transmute(env) == left:
-                    return key
-            return None
+            if left < 0 or left >= len(right):
+                return None
+            return right[left]
+        if isinstance(right, dict):
+            if left not in right:
+                if "_" in right:
+                    return right["_"]
+                return None
+            return right[left]
         raise TinderBurn(f"Right operand must be an Array or Table, got {type(right).__name__}.")
+    def __repr__(self):
+        return super().__repr__().replace("%s", "from")
 
 class ValueIn(AbstractBinary):
     """Returns the left operand if it is found in the right operand, otherwise None."""
-    def __init__(self, left: Kindling, right: Array | Table | Identifier ):
+    def __init__(self, left: Kindling, right: Kindling ):
         super().__init__(left, right)
     def transmute(self, env: Crucible):
         right = self.right.transmute(env)
@@ -632,22 +623,24 @@ class ValueIn(AbstractBinary):
 
 class ValueAt(AbstractBinary):
     """Returns the value at the index specified by the left operand in the right operand."""
-    def __init__(self, left: Kindling, right: Array | Table | Identifier ):
+    def __init__(self, left: Kindling, right: Kindling ):
         super().__init__(left, right)
     def transmute(self, env):
         right = self.right.transmute(env)
         left = self.left.transmute(env)
-        if isinstance(right, Array):
+        if isinstance(right, list):
             if isinstance(left, (int, float)):
                 value = right[int(left)]
                 return value.transmute(env) if value else None
             raise TinderBurn(f"Left operand must be an integer index, got {type(left).__name__}.")
-        if isinstance(right, Table):
+        if isinstance(right, dict):
             if isinstance(left, str):
                 value = right[left]
                 return value.transmute(env) if value else None
             raise TinderBurn(f"Left operand must be a string key, got {type(left).__name__}.")
         raise TinderBurn(f"Right operand must be an Array or Table, got {type(right).__name__}.")
+    def __repr__(self):
+        return super().__repr__().replace("%s", "at")
 
 # statements
 
@@ -687,6 +680,27 @@ class Call(AbstractSymbol):
 
 # assignment
 
+class Put(Keyword):
+    """Inserts a value into a list or table"""
+    def __init__(self, expression: Kindling, op: Symbol, identifier: Identifier):
+        self.expression = expression
+        self.identifier = identifier
+        self.op = op
+    def transmute(self, env: Crucible):
+        value = self.expression.transmute(env)
+        identifier = self.identifier.transmute(env)
+        if not isinstance(identifier, list):
+            raise TinderBurn(f"Identifier '{self.identifier.value}' is not an array.")
+        if isinstance(identifier, list):
+            if isinstance(self.op, Before):
+                identifier.insert(0, value)
+            elif isinstance(self.op, After):
+                identifier.append(value)
+            else:
+                raise TinderBurn(f"Unknown put operation: {self.op.__class__.__name__}")
+    def __repr__(self):
+        return f"Put(expression={self.expression}, op={self.op.__class__.__name__}, identifier={self.identifier})"
+
 class Inc(AbstractSymbol):
     def __init__(self, identifier: Identifier, expression: Optional[Kindling] = None):
         raise SymbolReplace(Set(identifier, Add(identifier, expression or Number("1"))))
@@ -705,7 +719,20 @@ class Set(Keyword):
         env.set(self.identifier, value)
     def __repr__(self):
         return f"Set(identifier={self.identifier}, value={self.value})"
-    
+
+class Swap(Keyword):
+    """Swaps the values of two variables in the environment."""
+    def __init__(self, left: Identifier, right: Identifier):
+        self.left = left.value
+        self.right = right.value
+    def transmute(self, env: Crucible):
+        left = env.get(self.left)
+        right = env.get(self.right)
+        env.set(self.left, right)
+        env.set(self.right, left)
+    def __repr__(self):
+        return f"Swap(left={self.left}, right={self.right})"
+
 class Const(Set):
     """Flags a variable as a const in the environment for the resolver."""
     def __init__(self, identifier: Identifier, value: Kindling ):
@@ -729,7 +756,7 @@ class Interrupt(Keyword):
         return f"Interrupt(exception={self.exception}, jump={self.jump})"
 
 class Jump(Keyword):
-    def __init__(self, identifier: Number | String | Identifier ):
+    def __init__(self, identifier: Kindling ):
         self.identifier = identifier
     def transmute(self, env: Crucible):
         try:
@@ -832,7 +859,7 @@ class Import(Keyword):
         raise Imported(self.library, self.name)
     def __repr__(self):
         return f"Import(library={self.library}, name={self.name})"
-    
+
 class From(Keyword):
     """Imports one or more specific symbols from a library into the environment."""
     def __init__(self, library: Identifier, *symbols: Identifier):
@@ -918,14 +945,6 @@ def _(node: Table, env: Crucible):
         count += 1 if isinstance(node.table[key], Constant) else 0
     return count == len(node.table) # whole table is resolved to constants
 
-@resolveChildren.register
-def _(node: Batch, env: Crucible):
-    count = 0
-    for i in range(len(node.items)):
-        node.items[i] = resolve(node.items[i], env)
-        count += 1 if isinstance(node.items[i], Constant) else 0
-    return count == len(node.items)
-
 # Tinder
 
 class Tinder:
@@ -945,20 +964,20 @@ class Tinder:
 
     def __getitem__(self, index: int):
         return self.instructions[index]
-    
+
     def __len__(self) -> int:
         return len(self.instructions)
-    
+
     def __repr__(self) -> str:
         list = '\n\t'.join(repr(inst) for inst in self.instructions)
         return f"Tinder[{len(self)} lines](\n\t{list}\n)"
-    
+
     def writeJumpTable(self, env: Crucible):
         env.update(self.jumpTable)
         return env
 
     def resolve(self, env: dict = {}):
-        crucible = Crucible().update(env)
+        crucible = Crucible().update(env, constants=[key for key in env.keys()])
         crucible.update(self.jumpTable, constants=[key for key in self.jumpTable.keys()])
         for i, (line, instruction) in enumerate(self.instructions):
             if isinstance(instruction, NoOp):

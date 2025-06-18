@@ -1,5 +1,5 @@
 from typing import Any, Dict, Optional
-from torchbox.serializer import Serializer, serialize, deserialize
+from serializer import Serializer, serialize, deserialize
 
 class CrucibleAccess:
     READ_FROM_BASE = 0x01
@@ -74,10 +74,10 @@ class Crucible(Serializer):
             flags += "NS "
         flags = flags.strip()
         return f"Crucible[{flags}]({self.variables})"
-    
+
     def __getitem__(self, var: str):
         return self.get(var)
-    
+
     def __setitem__(self, var: str, value):
         self.set(var, value)
 
@@ -101,7 +101,7 @@ class Crucible(Serializer):
         if constants:
             self.constants.extend(constants)
         return self
-    
+
     def set(self, var: str, value):
         def write(var, key, value):
             if isinstance(var, dict):
@@ -110,14 +110,14 @@ class Crucible(Serializer):
                 var[int(key)] = value
             else:
                 setattr(var, key, value)
-                
+
         def read(var, key):
             if isinstance(var, dict):
                 return var[key]
             elif isinstance(var, list):
                 return var[int(key)]
             return getattr(var, key)
-            
+
         def write_to_self(var, value):
             points = var.split('.')
             scope = self.variables
@@ -139,12 +139,12 @@ class Crucible(Serializer):
                 else:
                     raise CrucibleWriteError(var, "scope is protected.")
             write(scope, points[0], value)
-            
+
         def write_to_base(var, value):
             if not self.parent:
                 raise CrucibleWriteError(var, "no parent scope available.")
             self.parent.set(var, value)
-        
+
         def is_shadowing(var):
             scope = self.parent
             key = var.split('.')[0]
@@ -163,7 +163,7 @@ class Crucible(Serializer):
                 try:
                     write_to_base(var, value)
                 except CrucibleError:
-                    raise CrucibleWriteErrorShadowing(var, "shadowing is not allowed in this scope.")
+                    raise CrucibleWriteErrorShadowing(var)
             else:
                 write_to_self(var, value)
 
@@ -175,7 +175,7 @@ class Crucible(Serializer):
             elif isinstance(var, list):
                 return var[int(key)]
             return getattr(var, key)
-            
+
         def read_from_self(var):
             points = var.split('.')
             scope = self.variables
@@ -184,7 +184,7 @@ class Crucible(Serializer):
                     raise CrucibleValueNotFound(var)
                 scope = read(scope, point)
             return scope
-        
+
         def read_from_base(var):
             if self.parent:
                 return self.parent.get(var)

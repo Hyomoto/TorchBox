@@ -4,7 +4,7 @@ import random
   set COINS to 1
 # start
   input "Pick heads or tails (h/t):"
-  set CHOICE to match(INPUT, <"h.ead.s", "t.ail.s">, invalid_choice)
+  set CHOICE to match(INPUT, batch("h.ead.s", "t.ail.s"), invalid_choice)
   
 "Flipping the coin..."
   set RESULT to random.choice(["heads", "tails"])

@@ -28,9 +28,11 @@ class LocalUser(SocketUser):
         return "<LocalUser>"
 
 def debug():
-    torchbox: Game = instantiate_game(debug = False)
+    path = ""
+    #path = "home/start.v2.tinder"
+    torchbox: Game = instantiate_game(path, debug = True)
     player = LocalUser(None, torchbox.queue, torchbox.log)
-    #torchbox.compile("./game/scripts/user/status.v2.tinder")
+    #print( torchbox.scenes["home/start"])
     #exit()
     player.environment["STACK"] = [(0,"login/faststart",None)]
     player.login()

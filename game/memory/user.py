@@ -7,7 +7,7 @@ from typing import Tuple
 from tinder.crucible import Crucible, NO_SHADOWING
 from tinder import Tinder
 from torchbox.realm import User
-from torchbox.serializer import Serializer, serialize, deserialize
+from serializer import Serializer, serialize, deserialize
 from abc import ABC, abstractmethod
 import operator
 import inspect
@@ -187,23 +187,3 @@ map = {
     "INPUT": "",
     "USER": None,
 }
-
-
-def new_user_data(nickname: str):
-    return {
-        "username": nickname,
-        "nickname": nickname,
-        "gender": "Male",
-        "race": "Human",
-        "money": Attribute(0, max=9_999_999),
-        "hp": Attribute(100),
-        "actions": Attribute(5),
-        "modifiers": {},
-        "background": "A mysterious stranger.",
-        "profession": None,
-        "inventory": [],
-        "skills": {
-            "attack": Attribute(1),
-            "defense": Attribute(1),
-        }
-    }

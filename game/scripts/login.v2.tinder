@@ -4,7 +4,7 @@
     input "`11Lo' who goes there? (`0username`11):"
 # find_user
     call enter("login/secure", { input: INPUT, try: "`3What is thy password? (`0password`3):", retry: "`3That is incorrect, perhaps you have forgotten it? (`0password`3):", tries: 3 })
-    jump @LOGIN // success, no_user, wrong_password
+    jump @LOGIN `` success, no_user, wrong_password
 # success
     "\nWelcome, [[USER.nickname]]!\n"
     stop

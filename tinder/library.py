@@ -3,13 +3,13 @@ from abc import ABC, abstractmethod
 import inspect
 import sys
 
-def import_api(module: str, context: object, include: List[str] = ["all"], exclude: List[str] = []):
+def import_libraries(module: str, context: object, include: List[str] = ["all"], exclude: List[str] = []):
     apis = {}
-    for name, obj in inspect.getmembers(sys.modules[module], lambda x: inspect.isclass(x) and issubclass(x, API) and not inspect.isabstract(x)):
+    for name, obj in inspect.getmembers(sys.modules[module], lambda x: inspect.isclass(x) and issubclass(x, Library) and not inspect.isabstract(x)):
         if name in exclude:
             continue
         if name in include or "all" in include:
-            new: API = obj(context)
+            new: Library = obj(context)
             apis[new.name] = new
     return apis
 
@@ -44,7 +44,7 @@ class PermissionRequirer:
             return False
         return all(perm in check.permissions for perm in self.permissions)
 
-class API(PermissionRequirer, dict, ABC):
+class Library(PermissionRequirer, dict, ABC):
     """Base class for APIs, providing permission management and export functionality."""
     @abstractmethod
     def __init__(self, name: str, context: object, **kwargs):
