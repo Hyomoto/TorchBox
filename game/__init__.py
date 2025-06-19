@@ -1,9 +1,9 @@
-from typing import List, Tuple, Callable, Optional
+from typing import Dict, List, Tuple, Callable, Optional
 from torchbox import TorchBox, Ember, ConnectionHandler, SocketHandler, Shutdown
 from torchbox.realm import Realm, User
 from firestarter import FirestarterError
 from tinder import Tinderstarter, Tinder, Kindling, TinderBurn
-from tinder import Imported, Jumped, Yielded, Returned, Halted
+from tinder import Imported, Yielded, Halted
 from tinder.crucible import Crucible, PROTECTED, READ_ONLY, NO_SHADOWING
 from tinder.library import PermissionHolder, Library
 from torchbox.logger import Logger, Log, Critical, Warning, Info, Debug
@@ -63,19 +63,16 @@ class SocketUser(SocketHandler):
         self.environment = env
 
 class Game(TorchBox):
-    def __init__(self, realm: Realm, env: Crucible):
-        super().__init__(realm, env, Logger(length = 255, output="./logs/torchbox.log"))
+    def __init__(self, env: Crucible):
+        super().__init__(None, env, Logger(length = 255, output="./logs/torchbox.log"))
         self.scenes = {}
         # build the memory environment
-        self.baseLibrary = BaseLibrary(self)
-        self.shared = Crucible(PROTECTED, parent=env).update(globalMemory).update(self.baseLibrary.export())
-        self.libraries: dict[str, Library] = import_libraries(self, exclude=["BaseLibrary"])
-        self.log(Info(f"{len(self.libraries)} Libraries loaded: {Ansi.RESET}{', '.join(self.libraries.keys())}", "🔌"))
+        self.shared = Crucible(PROTECTED, parent=env).update(globalMemory)
+        self.libraries: Dict[str, Library] | None = None
         self.player: SocketUser = None
         self.env = None
         self.running = True
         self.debug = False
-        self.log(Info("Game initialized.", "🕹️ "))
 
     def run(self):
         def gameLoop():
@@ -84,10 +81,9 @@ class Game(TorchBox):
                 The script loop is how scripts interact with the engine, thus we continue until
                 it finishes, a escaping control exception is called, or an error occurs.
                 """
-                nonlocal line, lastline
                 while True:
                     try:
-                        line = script.run(line, local)
+                        script.run(local)
                     except Imported as e:
                         if e.library not in self.libraries:
                             raise TinderBurn(f"Library '{e.library}' not found.")
@@ -98,31 +94,19 @@ class Game(TorchBox):
                             local.update(lib.export(e.request))
                         else:
                             local[e.name or e.library] = lib.export()
-                        line = e.line + 1
                         continue
-
-                    except Jumped as e:
-                        lastline = e.last + 1
-                        line = e.line + 1
-                        continue
-
-                    except Returned:
-                        line = lastline
-                        continue
-
+                    
                     except Halted as e:
                         user['STACK'] = []
                         break
 
                     except Yielded as e:
-                        line = e.line + 1
                         if e.carry:
-                            user["STACK"][-1][2].update(e.carry)
+                            user["STACK"][-1][1].update(e.carry)
                         break
                     break
 
             queue = self.queue
-            lastline = 0
             while self.running:
                 try:
                     message = queue.get(timeout=1) # blocking
@@ -136,20 +120,19 @@ class Game(TorchBox):
                     stack: list[Tuple[int, str, Crucible]] = user["STACK"]
 
                     while True:
-                        if stack[-1][2] is None:
+                        if stack[-1][1] is None:
                             # If the scope is not set, we need to set it up
-                            scene = stack[-1][1]
+                            scene = stack[-1][0]
                             script = self.get(scene)
                             if not script:
                                 raise TinderBurn(f"Scene '{scene}' not found.")
                             local = Crucible(NO_SHADOWING, parent=user) # initialize new local scope
-                            user["STACK"] = [(0, scene, local)]
+                            user["STACK"] = [(scene, local)]
                             stack = user["STACK"]
                             script.writeJumpTable(local)
                         
                         depth = len(stack) - 1
-                        lastline, script, local = stack[-1]
-                        line = lastline
+                        script, local = stack[-1]
                         scene: Scene = self.get(script) # type: ignore
                         local.parent = user
                         self.env = local
@@ -163,14 +146,14 @@ class Game(TorchBox):
                             local.parent = user
                             
                             if depth < len(stack):
-                                _, scr, lo = stack[depth]
-                                stack[depth] = (line, scr, lo) # update stack with new line
+                                scr, lo = stack[depth]
+                                stack[depth] = (scr, lo) # update stack with new line
 
                             output = self.substitute(user["OUTPUT"].replace("\\n", "\n"))
                             input = self.substitute(user["INPUT"].replace("\\n", "\n"))
                             
                             # check if scene changed, if so continue
-                            if stack and stack[-1][1] != script:
+                            if stack and stack[-1][0] != script:
                                 user["OUTPUT"] = output
                                 user["INPUT"] = input
                                 continue
@@ -225,22 +208,6 @@ class Game(TorchBox):
                 return SocketUser(client, self.queue, self.log)
         return super().getHandler(client, of)
 
-    def compile(self, filepath: str, env: dict = {}) -> Scene:
-        """Compile a script and add it to the game."""
-        keyname, filename = os.path.split(filepath)
-        filename = filename.split(".")
-        keyname = os.path.normpath(keyname).replace("\\", "/").removeprefix("game/scripts")
-        keyname = keyname.removeprefix("/")
-        keyname += "/" if keyname else ""
-        version = filename[-2]
-        script = get_file(filepath)
-        try:
-            tinder = tinderstarter.compile(script, version, env)
-        except FirestarterError as e:
-            raise Ember(f"Error compiling '{filepath}':\n{e}")
-        self.add(keyname + filename[0], tinder)
-        return tinder
-
     def add(self, name: str, scene: Tinder):
         self.scenes[name] = scene
         return self
@@ -256,43 +223,95 @@ def instantiate_game(path: str = "", debug = False):
 
     If debug is True, script compilation is skipped.
     """
-    game = Game(None, Crucible(READ_ONLY).update(protectedMemory))
+    def compile_worker(queue: queue.Queue, results: queue.Queue, env: dict, permissions: list[str]):
+        """Worker function to compile scripts in a separate thread."""
+        while True:
+            try:
+                filepath: str = queue.get_nowait()
+                filepath = os.path.normpath(filepath).replace("\\", "/")
+            except QueueEmpty:
+                break
+            scenename = None
+            try:
+                script = get_file(filepath)
+                keyname, filename = os.path.split(filepath.removeprefix("game/scripts"))
+                filename = filename.split(".")
+                keyname = keyname.removeprefix("/")
+                keyname += "/" if keyname else ""
+                version = filename[-2]
+                scenename = keyname + filename[0]
+                try:
+                    tinder: Scene = tinderstarter.compile(script, version, copy.copy(env))
+                except FirestarterError as e:
+                    raise Ember(f"Error compiling '{filepath}':\n{e}")
+                path = Path(filepath).parts
+                if len(path) > 3 and path[2] in permissions:
+                    tinder.permissions = [path[2]]
+                results.put((scenename, tinder, None))
+            except (Ember, TinderBurn) as e:
+                results.put((scenename, None, str(e)))
+            finally:
+                queue.task_done()
+    
+# Initialize the game environment
+    game = Game(Crucible(READ_ONLY).update(protectedMemory))
+    game.log(Info("Starting TorchBox server...", "🔥"))
+# Import libraries
+    libraries = import_libraries(game, exclude=["BaseLibrary"])
+    game.log(Info(f"Loaded {len(libraries)} libraries.", "📚"))
+    base = BaseLibrary(game).export()
+    game.shared.update(base)
+    game.libraries = libraries
+# Prepare the realm
     if os.path.exists(SAVE_FILE):
         game.log(Info(f"Loading realm from {Ansi.BLUE}{SAVE_FILE}{Ansi.RESET}...", "💽", Ansi.WHITE))
         realm = Realm.load(SAVE_FILE, classes=classes)
     else:
         game.log(Info("Creating new realm...", "🛠️", Ansi.WHITE))
         realm = Realm("Socks & Sorcery", "A realm for Socks & Sorcery users.")
-        realm.addUser(User("admin", "default"))
-    game.realm = realm
-    game.log(Info("Starting TorchBox server...", "🔥"))
     game.log(Info(f"Realm: {Ansi.GREEN}{realm.name}{Ansi.RESET}", f"🏰", Ansi.WHITE))
+    game.realm = realm
     game.debug = debug
-
+# Find possible permissions
+    tinderstarter.libs = game.libraries
     permissions = []
     for library in game.libraries.values():
         if library.permissions:
             permissions.extend(library.permissions)
-    scripts = get_scripts(path)
-    game.log(Info(f"Found {len(scripts)} scripts.", "📜"))
+# Prepare thread environment for compiling scripts
+    scripts = queue.Queue()
+    results = queue.Queue()
     count = 0
-    game.logger.show = False
-    env = {k: v for k, v in game.baseLibrary.export().items() if getattr(v, "_resolvable", False)}
-    for script in scripts:
-        try:
-            # grab start of path up until first /
-            scene = game.compile(script, env)
-            path = Path(script).parts
-            if len(path) > 3 and path[2] in permissions:
-                scene.permissions = [path[2]]
-            count += 1
-        except (Ember, TinderBurn) as e:
-            text = str(Warning(f"Error compiling '{script}': {Ansi.RESET}{e}"))
-            print(text)
-            game.log(Warning(e))
-    game.logger.show = True
-    game.log(Info(f"Compiled {count} scripts.", "  "))
-    
+    env = {k: v for k, v in base.items()}
+    for script in get_scripts(path):
+        scripts.put(script)
+        count += 1
+
+    game.log(Info(f"Found {count} scripts.", "📜"))
+    game.logger.show = False # Hide logger output during compilation
+    from testing import Profiler
+# Start worker threads to compile scripts
+    with Profiler("Compiling scripts"):
+        NUM_WORKERS = min(4, os.cpu_count() or 1)  # Use up to 4 workers or number of CPUs
+        threads: list[threading.Thread] = []
+        for _ in range(NUM_WORKERS):
+            thread = threading.Thread(target=compile_worker, args=(scripts, results, env, permissions))
+            thread.start()
+            threads.append(thread)
+    # Wait for all scripts to be processed
+        scripts.join()
+        for thread in threads:
+            thread.join()
+    # Only errors are put in the results queue, so we can check if there were any errors
+        game.logger.show = True
+        while not results.empty():
+            keyname, scene, error = results.get()
+            if scene:
+                game.add(keyname, scene)
+            else:
+                game.log(Warning(error))
+        game.log(Info(f"Compiled {len(game.scenes)} scripts.", "  "))
+
     return game
 
 def start_server(torchbox: TorchBox):

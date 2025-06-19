@@ -41,15 +41,7 @@ Tables (dictionaries) are key-value pairs, declared with curly braces `{}`.
 set user to {name: "Devon", score: 100}
 ```
 
-#### Batches
-
-Batches are a shorthand for mapping inputs (especially for user choices), declared with angle brackets `<>`.
-
-```tinder
-set commands to <"fight", "run">
-```
-
-?> See [Expressions](language/basics.md#expressions) for how batches expand to dictionaries for input matching.
+?> Tables and arrays both allow for trailing commas.
 
 ---
 

@@ -118,7 +118,7 @@ class Value(Symbol):
 
 class SymbolReplace(Exception):
     """Thrown when a Symbol needs to be replaced during compilation."""
-    def __init__(self, new: Symbol):
+    def __init__(self, new: Symbol | List[Symbol]):
         self.new = new
 
 class FirestarterError(Exception):
@@ -322,9 +322,17 @@ class Firestarter:
                         raise FirestarterError(f"Error on line {lineNumbers.pop(0)}: {e}")
                     stack.pop()  # pop current node from stack
                     if stack:
-                        stack[-1][2].append(output)
+                        if isinstance(output, list):
+                            stack[-1][2].extend(output)
+                        else:
+                            stack[-1][2].append(output)
                     else:
-                        results.append((lineNumbers.pop(0), output))
+                        number = lineNumbers.pop(0)
+                        if isinstance(output, list):
+                            for item in output:
+                                results.append((number, item))
+                        else:
+                            results.append((number, output))
                 else:
                     child = node.children[i]
                     stack[-1] = (node, i + 1, args)  # increment index for next iteration

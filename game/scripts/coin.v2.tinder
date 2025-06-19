@@ -13,11 +13,11 @@ import random
 "Unlucky! The coin landed on [[RESULT]]."
   dec COINS
   jump start if COINS > 0
-# win else end
+# win or end
   "Congratulations! You guessed [[RESULT]] and won!"
   inc COINS
-# invalid_choice else start
+# invalid_choice or start
   "That's not a valid choice. Please pick heads or tails."
-# end else start
+# end or start
   "Thanks for playing!"
   call exit()

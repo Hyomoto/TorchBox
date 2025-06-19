@@ -1,7 +1,7 @@
 import os
 from typing import Set, Optional
 from tinder.crucible import Crucible, CrucibleAccess
-from serializer import Serializer
+from mixins.serializer import Serializer
 import threading
 import bcrypt
 import json
@@ -33,7 +33,7 @@ class User(Serializer):
     def checkPassword(self, password: str) -> bool:
         """Check if the provided password matches the stored hashed password."""
         return bcrypt.checkpw(password.encode('utf-8'), self.hashed_password)
-    
+
     def serialize(self) -> dict:
         """Serialize the user to a dictionary representation."""
         return {
@@ -41,7 +41,7 @@ class User(Serializer):
             "hashed_password": self.hashed_password.decode('utf-8'),  # Convert bytes to string for serialization
             "data": self.data.serialize() if self.data else {}
         }
-    
+
     @classmethod
     def deserialize(cls, data: dict, classes: Optional[dict] = None):
         """Deserialize the user from a dictionary representation."""
@@ -60,7 +60,7 @@ class User(Serializer):
     def __getitem__(self, key: str):
         """Get an item from the user's data."""
         return self.data.get(key)
-    
+
     def __setitem__(self, key: str, value):
         """Set an item in the user's data."""
         self.data[key] = value

@@ -35,7 +35,7 @@ class PermissionRequirer:
     def __init__(self, permissions: Optional[List[str]] = None, **kwargs):
         self.permissions = permissions or []
         super().__init__(**kwargs)
-    
+
     def hasPermission(self, check: object) -> bool:
         """Check if the required permissions are present in the given holder."""
         if not self.permissions:

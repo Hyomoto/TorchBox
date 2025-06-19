@@ -7,7 +7,7 @@ from typing import Tuple
 from tinder.crucible import Crucible, NO_SHADOWING
 from tinder import Tinder
 from torchbox.realm import User
-from serializer import Serializer, serialize, deserialize
+from mixins.serializer import Serializer, serialize, deserialize
 from abc import ABC, abstractmethod
 import operator
 import inspect

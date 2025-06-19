@@ -17,6 +17,6 @@ from text import column
   jump get_input
 # view
   call enter("user/status")
-# find else start
+# find or start
 # quit
   stop

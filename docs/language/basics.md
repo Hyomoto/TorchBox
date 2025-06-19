@@ -10,14 +10,14 @@ line
 ...
 ```
 
-**Comments** begin with `//` and extend to the end of the line. They can appear alone or after any instruction:
+**Comments** begin with `\`\`` and extend to the end of the line. They can appear alone or after any instruction:
 
 ```tinder
-// this is a comment
-import a // another comment
+\`\` this is a comment
+import a \`\` another comment
 ```
 
-**Labels** begin with `#` followed by an identifier, marking jump targets for control flow. Labels may have an 'else' form (see [control flow](language/keywords.md#control-flow)), and otherwise act as anchors for jumps:
+**Labels** begin with `#` followed by an identifier, marking jump targets for control flow. Labels have several forms, including for each, for iter and an else (see [control flow](language/keywords.md#control-flow)), and otherwise act as anchors for jumps:
 
 ```tinder
 # line_label
@@ -35,6 +35,16 @@ import foo
 set a to 1
 jump to line_label if a > 0
 ```
+
+**Else Statements** are a special form of statement that begins with `else`.  These can be used to chain statement checks.
+
+```tinder
+jump to foo if a > 0
+else jump to baz if a < 0
+```
+
+!> Use of `else` will check if the *last* evaluated condition was false and, if so, run this line.  Much like the return keyword, this is not the same as a normal else because there is no block evaluation.  Thus this is typically meant to be used *immediately* following a failed condition.
+
 
 A typical script:
 
@@ -96,7 +106,7 @@ An expression can be:
 * A **literal** (`10`, `"hello"`, `True`)
 * An **identifier** or **variable** (`score`, `user.name`)
 * A **function call** (`find_user(name)`)
-* A **data structure**: array (`[1, 2, 3]`), table (`{key: value}`), or batch (`<"attack", "defend">`)
+* A **data structure**: array (`[1, 2, 3]`) or table (`{key: value}`)
 * An **operation** or **comparison** (`a + 1`, `count > 0`)
 * A **grouped expression** (`(x + y) * 2`)
 * An **accessor chain** (see below)
@@ -137,6 +147,29 @@ set found to item in inventory
 set n to my_table.3.foo
 set val to key from {foo: 1, bar: 2}
 ```
+
+### Indirect Expressions
+
+An **indirect expression** uses the `@` symbol to resolve a value to a variable or label name, and then retrieve what that name points to. This allows dynamic lookup—your script can decide at runtime which variable, label, or value to use.
+
+```tinder
+jump @INPUT
+jump @k from ACTIONS
+```
+
+?> **Why use indirects?**
+Indirects are powerful for things like input-driven flow control, menu systems, or pattern matching. For example, you can store label names in a table, look up the next step based on user input, and jump there automatically.
+
+```tinder
+jump @INPUT from { q: "quit", n: "new_game", _ : "invalid_input" }
+```
+
+This allows flexible, data-driven scripts—where you can map inputs to actions or destinations without hard-coding every branch.
+
+---
+
+**In short:**
+Indirects let you resolve a value *to* a variable or label name, then use what’s stored there—enabling dynamic and reusable script patterns.
 
 ---
 

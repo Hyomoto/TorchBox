@@ -95,7 +95,8 @@ License: MIT License
 """
 from importlib.resources import files
 from typing import Tuple, Type, Dict, List, Optional, Any
-from .crucible import Crucible, CrucibleError
+from .crucible import Crucible, CrucibleError, CrucibleValueNotFound
+from .library import Library
 from abc import ABC, abstractmethod
 from firestarter import Firestarter, SymbolReplace, Symbol as AbstractSymbol, Value as AbstractValue
 from firestarter.grammar import make_grammar_from_file, Grammar
@@ -135,32 +136,14 @@ class Yielded(FlowControl):
     """
     Used by Tinders to yield control.
     """
-    def __init__(self, line: int = 0, carry: Optional[Dict] = None):
-        self.line = line
+    def __init__(self, carry: Optional[Dict] = None):
         if carry and not isinstance(carry, dict):
             raise TinderBurn(f"Illegal yield with carry: expected dict, got '{type(carry).__name__}'.")
         self.carry = carry
     def __str__(self):
-        return f"Yielded(line={self.line}, carry={self.carry})"
+        return f"Yielded(carry={self.carry})"
 
-class Jumped(FlowControl):
-    """
-    Used by the Tinders to jump to a new line.
-    """
-    def __init__(self, line: int = 0, last: int = 0):
-        self.line = line
-        self.last = last
-    def __str__(self):
-        return f"JumpTo({self.line})"
-
-class Returned(FlowControl):
-    """
-    Used to return to the last jump line.
-    """
-    def __str__(self):
-        return "Return()"
-
-class Imported(Yielded):
+class Imported(FlowControl):
     """
     Used to import a library.
     """
@@ -169,6 +152,8 @@ class Imported(Yielded):
         self.library = library
         self.name = name
         self.request = request
+    def __repr__(self):
+        return f"Imported(library={self.library}, name={self.name}, request={self.request})"
 
 # symbols
 
@@ -648,9 +633,11 @@ class Condition(Kindling):
     def __init__(self, condition: Kindling):
         self.condition = condition
     def transmute(self, env: Crucible):
-        if self.condition.transmute(env):
-            return True
-        return False
+        result = True if self.condition.transmute(env) else False
+        print(self)
+        print(result)
+        env.set("__CONDITION__", result)
+        return result
     def __repr__(self):
         return f"If(condition={self.condition})"
 
@@ -667,6 +654,21 @@ class Statement(Kindling):
         self.operation.transmute(env)
     def __repr__(self):
         return f"Statement(operation={self.operation}, condition={self.condition})"
+
+class Else(Kindling):
+    """An else statement that executes if the condition is false."""
+    def __init__(self, operation: "Keyword | Function", condition: Optional[Condition] = None):
+        self.operation = operation
+        self.condition = condition
+    def transmute(self, env: Crucible):
+        print(env.get("__CONDITION__"))
+        if env.get("__CONDITION__"): # if last condition was true, skip this
+            return
+        if self.condition and not self.condition.transmute(env):
+            return
+        self.operation.transmute(env)
+    def __repr__(self):
+        return f"Else(operation={self.operation}, condition={self.condition})"
 
 ### keywords ###
 
@@ -711,14 +713,18 @@ class Dec(AbstractSymbol):
 
 class Set(Keyword):
     """Sets a variable in the environment."""
-    def __init__(self, identifier: Identifier, value: Optional[Kindling] = None):
-        self.identifier = identifier.value
-        self.value = value
+    def __init__(self, *terms: Kindling):
+        if len(terms) % 2 != 0:
+            raise TinderBurn("Set requires an even number of terms (identifier, value pairs).")
+        keys = [key.value for key in terms[:len(terms) // 2]]
+        values = terms[len(terms) // 2:]
+        self.pairs: List[Tuple[Identifier, Kindling]] = list(zip(keys, values))
     def transmute(self, env: Crucible):
-        value = self.value.transmute(env) if self.value else None
-        env.set(self.identifier, value)
+        for identifier, value in self.pairs:
+            value = value.transmute(env) if value else None
+            env.set(identifier, value)
     def __repr__(self):
-        return f"Set(identifier={self.identifier}, value={self.value})"
+        return f"Set(pairs={self.pairs})"
 
 class Swap(Keyword):
     """Swaps the values of two variables in the environment."""
@@ -739,9 +745,41 @@ class Const(Set):
         super().__init__(identifier, value)
     def transmute(self, env):
         super().transmute(env)
-        env.constants.append(self.identifier)
+        for key, _ in self.pairs:
+            env.constants.append(key)
     def __repr__(self):
-        return f"Const(identifier={self.identifier}, value={self.value})"
+        return f"Const(pairs={self.pairs})"
+
+# loop sugar
+
+class Foreach(Keyword):
+    """
+    Provides sugar for looping over a list or table.
+    # goto a (, b) in c; d
+    """
+    def __init__(self, *identifier: Identifier ):
+        is_dict = len(identifier) == 4
+        self.values = [identifier[0], identifier[1]] if is_dict else [identifier[0]]
+        self.iterable = identifier[2] if is_dict else identifier[1]
+        self.jump = identifier[3] if is_dict else identifier[2]
+    def transmute(self, env: Crucible):
+        pass
+    def __repr__(self):
+        return f"Foreach(values={self.values}, iterable={self.iterable}, jump={self.jump})"
+
+class Foriter(Keyword):
+    """
+    Provides sugar for looping over a list or table.
+    # goto a = 0; a < len(b); c
+    """
+    def __init__(self, *terms: Kindling ):
+        self.assign = Set(terms[0], terms[1])
+        self.condition = Condition(terms[2])
+        self.jump = terms[3]
+    def transmute(self, env: Crucible):
+        pass
+    def __repr__(self):
+        return f"Foriter(assign={self.assign}, condition={self.condition}, jump={self.jump})"
 
 # control flow
 
@@ -761,11 +799,12 @@ class Jump(Keyword):
     def transmute(self, env: Crucible):
         try:
             line = self.identifier.transmute(env)
+            env.set("__JUMPED__", env.get("__LINE__"))
+            env.set("__LINE__", line + 1)
         except CrucibleError:
-            raise TinderBurn(f"Jump target '{self.identifier.value}' not found in environment.")
+            raise TinderBurn(f"Jump target '{self.identifier}' not found in environment.")
         if not isinstance(line, (int, float)):
-            raise TinderBurn(f"Jump target '{self.identifier.value}' is not a number ({line}).")
-        raise Jumped(int(line))
+            raise TinderBurn(f"Jump target '{self.identifier}' is not a number ({line}).")
     def __repr__(self):
         return f"Jump(identifier={self.identifier})"
 
@@ -773,7 +812,10 @@ class Return(Keyword):
     def __init__(self):
         pass
     def transmute(self, env: Crucible):
-        raise Returned()
+        try:
+            env.set("__JUMPED__", env.get("__LINE__"))
+        except CrucibleError:
+            raise TinderBurn(f"No return target found in environment.")
     def __repr__(self):
         return "Return()"
 
@@ -788,12 +830,34 @@ class NoOp(Kindling):
 
 class Goto(Keyword):
     """A no-operation instruction used to flag line numbers by name."""
-    def __init__(self, identifier: Identifier | String, otherwise: Optional[Identifier] = None):
+    def __init__(self, identifier: Identifier | String, otherwise: Optional[Identifier | Foreach | Foriter] = None):
         self.identifier: str = identifier.value
-        self.otherwise = otherwise
+        if isinstance(otherwise, Foreach):
+            output = [
+                Set(Identifier("__ITER__"), otherwise.iterable),
+                Set(Identifier("__INDEX__"), Number("0")),
+                Set(Identifier("__LENGTH__"), Function(Identifier("len"), otherwise.iterable)),
+                Goto(identifier),
+                Statement(Jump(otherwise.jump), Condition(Equal(Identifier("__INDEX__"), Identifier("__LENGTH__")))),
+            ]
+            if len(otherwise.values) == 1:
+                output.append(Set(otherwise.values[0], ValueFrom(Identifier("__INDEX__"), Identifier("__ITER__"))))
+            else:
+                output.append(Set(otherwise.values[0], ValueAt(Identifier("__INDEX__"), Identifier("__ITER__"))))
+                output.append(Set(otherwise.values[1], ValueFrom(otherwise.values[0], Identifier("__ITER__"))))
+            output.append(Set(Identifier("__INDEX__"), Add(Identifier("__INDEX__"), Number("1"))))
+            raise SymbolReplace(output)
+        elif isinstance(otherwise, Foriter):
+            output = [
+                otherwise.assign,
+                Goto(identifier),
+                Statement(Jump(otherwise.jump), Not(otherwise.condition)),
+            ]
+            raise SymbolReplace(output)
+        self.otherwise = Jump(otherwise) if otherwise else None
     def transmute(self, env: Crucible):
         if self.otherwise: # if otherwise, yield to it
-            raise Jumped(self.otherwise.transmute(env))
+            self.otherwise.transmute(env)
     def __repr__(self):
         return f"Goto(identifier={self.identifier}, otherwise={self.otherwise})"
 
@@ -880,9 +944,9 @@ class InterruptHandler(Exception):
 # Resolver
 
 @singledispatch
-def resolve(node: Kindling, env: Crucible):
+def resolve(node: Kindling, env: Crucible, libs: dict):
     """Try to resolve a Kindling."""
-    if (resolveChildren(node, env)):
+    if (resolveChildren(node, env, libs)):
         try:
             return Constant(node.transmute(env))
         except Exception:
@@ -890,17 +954,55 @@ def resolve(node: Kindling, env: Crucible):
     return node
 
 @resolve.register
-def _(node: Statement, env: Crucible):
-    resolveChildren(node, env)
-    if isinstance(node.condition, Constant):
-        if node.condition.transmute(env):
-            return node.operation
+def _(node: Import | From, env: Crucible, libs: Dict[str, Library]):
+    try:
+        node.transmute(env)
+    except Imported as e:
+        if e.library not in libs:
+            return node
+        lib = libs.get(e.library)
+        if e.request:
+            env.update(lib.export(e.request))
         else:
-            return NoOp()
+            env[e.name or e.library] = lib.export()
     return node
 
 @resolve.register
-def _(node: Identifier, env: Crucible):
+def _(node: Condition, env: Crucible, libs: dict):
+    return node
+
+@resolve.register
+def _(node: Statement, env: Crucible, libs: dict):
+    resolveChildren(node, env, libs)
+    return node
+
+@resolve.register
+def _(node: Function, env: Crucible, libs: dict):
+    try:
+        func = node.identifier.transmute(env)
+    except CrucibleError:
+        return node
+    if getattr(func, "_resolvable", False):
+        try:
+            return Constant(func(env, *node.arguments.transmute(env) if node.arguments else []))
+        except Exception:
+            pass
+    return node
+
+@resolve.register
+def _(node: Set | Const, env: Crucible, libs: dict):
+    for i, (key, value) in enumerate(node.pairs):
+        try:
+            node.pairs[i] = (key, resolve(value, env, libs))
+            env.set(key, node.pairs[i][1].transmute(env))
+            if isinstance(node, Const):
+                env.constants.append(key)
+        except Exception:
+            pass
+    return node
+
+@resolve.register
+def _(node: Identifier, env: Crucible, libs: dict):
     if node.value in env.constants:
         try:
             value = node.transmute(env)
@@ -910,11 +1012,11 @@ def _(node: Identifier, env: Crucible):
     return node
 
 @resolve.register
-def _(node: Constant, env: Crucible):
+def _(node: Constant, env: Crucible, libs: dict):
     return node
 
 @singledispatch
-def resolveChildren(node: Kindling, env: Crucible):
+def resolveChildren(node: Kindling, env: Crucible, libs: dict):
     """Recursively resolve all child kindlings."""
     count, tried = 0, 0
     for attr in vars(node):
@@ -923,25 +1025,25 @@ def resolveChildren(node: Kindling, env: Crucible):
         if isinstance(value, list):
             for i, item in enumerate(value):
                 if isinstance(item, Kindling):
-                    value[i] = resolve(item, env)
+                    value[i] = resolve(item, env, libs)
         elif isinstance(value, Kindling):
-            setattr(node, attr, resolve(value, env))
+            setattr(node, attr, resolve(value, env, libs))
         count += 1 if isinstance(getattr(node, attr), Constant) else 0
     return count == tried # all children resolved to constants
 
 @resolveChildren.register
-def _(node: Array, env: Crucible):
+def _(node: Array, env: Crucible, libs: dict):
     count = 0
     for i in range(len(node.list)):
-        node.list[i] = resolve(node.list[i], env)
+        node.list[i] = resolve(node.list[i], env, libs)
         count += 1 if isinstance(node.list[i], Constant) else 0
     return count == len(node.list) # whole list is resolved to constants
 
 @resolveChildren.register
-def _(node: Table, env: Crucible):
+def _(node: Table, env: Crucible, libs: dict):
     count = 0
     for key, value in node.table.items():
-        node.table[key] = resolve(value, env)
+        node.table[key] = resolve(value, env, libs)
         count += 1 if isinstance(node.table[key], Constant) else 0
     return count == len(node.table) # whole table is resolved to constants
 
@@ -976,38 +1078,39 @@ class Tinder:
         env.update(self.jumpTable)
         return env
 
-    def resolve(self, env: dict = {}):
-        crucible = Crucible().update(env, constants=[key for key in env.keys()])
+    def resolve(self, env: dict = {}, libs = {}):
+        crucible = Crucible().update(env)
         crucible.update(self.jumpTable, constants=[key for key in self.jumpTable.keys()])
         for i, (line, instruction) in enumerate(self.instructions):
             if isinstance(instruction, NoOp):
                 continue # discard no-ops
             elif isinstance(instruction, Kindling):
-                self.instructions[i] = (line, resolve(instruction,crucible))
+                self.instructions[i] = (line, resolve(instruction, crucible, libs))
 
-    def run(self, line: int, env: Crucible):
-        while line < len(self.instructions):
+    def run(self, env: Crucible):
+        if "__LINE__" not in env:
+            env.set("__LINE__", 0)
+        while True:
+            line = env.get("__LINE__")
+            if line < 0 or line >= len(self.instructions):
+                break
             actual, op = self.instructions[line]
             try:
+                env.set("__LINE__", line + 1)
                 op.transmute(env)
-                line += 1
             except InterruptHandler as e:
                 self.interrupts[e.exception] = e.jump
-                line += 1
-            except Yielded as e:
-                e.line = line
-                raise e
-            except Jumped as e:
-                e.last = line
-                raise e
             except FlowControl as e:
+                env.set("__LINE__", line + 1)
                 raise e
             except Exception as e:
                 if e.__class__.__name__ in self.interrupts:
                     line = self.interrupts[e.__class__.__name__]
-                    raise Jumped(line, line) # convert exception to Jumped
-                raise TinderBurn(f"Run failed on line {actual}: {e}") from e
-        return line
+                    Jump(Constant(line)).transmute(env)
+                    continue
+                else:
+                    raise TinderBurn(f"Run failed on line {actual}: {e}") from e
+        raise Halted() # end of execution
 
 def getAllSymbols():
     """
@@ -1017,9 +1120,10 @@ def getAllSymbols():
     return [obj for _, obj in inspect.getmembers(sys.modules[__name__], lambda x: inspect.isclass(x) and issubclass(x, AbstractSymbol) and not inspect.isabstract(x))]
 
 class Tinderstarter(Firestarter):
-    def __init__(self, script_type = Tinder):
+    def __init__(self, script_type = Tinder, libs: Dict[str, Library] = {}):
         super().__init__(grammar=None, strict=True) # type: ignore
         self.script = script_type
+        self.libs = libs
         classes = getAllSymbols()
         # Grabs all non-abstract classes so we can just define them and not register them manually
         for obj in classes:
@@ -1034,5 +1138,5 @@ class Tinderstarter(Firestarter):
             raise TinderBurn(f"Unsupported Tinder version: {version}. Available versions: {list(GRAMMARS.keys())}")
         self.grammar = GRAMMARS[version]
         script = super().compile(source, self.script)
-        script.resolve(env)
+        script.resolve(env, self.libs)
         return script

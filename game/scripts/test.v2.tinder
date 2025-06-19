@@ -1,0 +1,17 @@
+set item to "None"
+const ITEMS = [ "a", "b", "c", "d", "e" ]
+# foreach item in ITEMS; endforeach
+  call debug(item)
+# endforeach or foreach
+
+call debug("Nope!") if False
+else call debug("Yep!")
+
+set a, b to 0, 1
+call debug(a)
+call debug(b)
+
+# for i = 0; i < len(ITEMS); endfor
+  call debug(i from ITEMS)
+  inc i
+# endfor or for

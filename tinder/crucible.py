@@ -1,5 +1,5 @@
 from typing import Any, Dict, Optional
-from serializer import Serializer, serialize, deserialize
+from mixins.serializer import Serializer, serialize, deserialize
 
 class CrucibleAccess:
     READ_FROM_BASE = 0x01

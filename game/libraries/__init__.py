@@ -1,8 +1,8 @@
 from typing import Dict, List, Any
 from tinder.library import Library, exportable, exportableAs, import_libraries as _import_libraries
 from torchbox.realm import Realm, User
-from .memory.user import Player
-from tinder import Kindling, TinderBurn, Yielded, Jumped, Array
+from ..memory.user import Player
+from tinder import TinderBurn, Yielded
 from tinder.crucible import Crucible, NO_SHADOWING
 from typing import Optional
 from .canvas import Canvas, Sprite
@@ -14,14 +14,29 @@ import re
 def import_libraries(context: object, include: List[str] = ["all"], exclude: List[str] = []) -> Dict[str, Library]:
     return _import_libraries(__name__, context, include=include, exclude=exclude)
 
-def resolvable(fn):
+def static_eval_safe (fn):
+    """
+    Marks a function as safe for static (compile-time) evaluation.
+
+    This decorator signals to the compiler resolver that the function
+    can be *safely* evaluated during compilation if desired, because it
+    has no side effects and produces deterministic output for the same inputs.
+    
+    Note:
+        - The resolver uses this as a hint to optimize code by folding
+          function calls into constant values when possible.
+        - Marking a function with this does not guarantee it will be
+          resolved at compile time, only that it is safe to try.
+        - Functions that cause side effects or rely on runtime state
+          should not be marked as static_eval_safe.
+    """
     fn._resolvable = True
     return fn
 
 class BaseLibrary(Library):
     """
-    The base Library is always available and provides basic functionality for scene management, input matching,
-    debugging, and string manipulation.  It also provides access to ANSI color codes.
+    The base Library is always available and provides basic functionality for scene management,
+    input matching, debugging, and string manipulation.  It also provides access to ANSI color codes.
     """
     def __init__(self, context: object):
         super().__init__("base", context=context)
@@ -30,7 +45,7 @@ class BaseLibrary(Library):
     @exportableAs("scene")
     def changeScene(self, env: Crucible, scene: str, carry: Optional[dict] = None):
         """
-        Change the scene for the player.  The dictionary 'carry' will pass those keys to the new scene.
+        Change the scene for the player, setting up the local environment.
         Args:
             - scene (str): The name of the scene to change to.
             - carry (dict, optional): Additional data to carry over to the new scene.
@@ -41,14 +56,13 @@ class BaseLibrary(Library):
         user = env.parent # grab user scope
         while user["STACK"]:
             user["STACK"].pop()
-        user["STACK"].append((0, scene, None))
-        raise Yielded(line=0, carry=carry)  # Yield to allow the game loop to continue
+        user["STACK"].append((scene, None))
+        raise Yielded(carry=carry)  # Yield to allow the game loop to continue
 
     @exportableAs("enter")
     def enterScene(self, env: Crucible, scene: str, carry: Optional[dict] = None):
         """
-        Push a new scene onto the stack, can be returned to using exit.  This allows for nested scenes and
-        scene transitions.  The dictionary 'carry' will pass those keys to the new scene.
+        Push a new scene onto the stack, can be returned to using exit.
         Args:
             - scene (str): The name of the scene to enter.
             - carry (dict, optional): Additional data to carry over to the new scene.
@@ -59,62 +73,57 @@ class BaseLibrary(Library):
         user = env.parent # grab user scope
         local = Crucible(NO_SHADOWING, parent=user) # initialize new local scope
         stack: list = user["STACK"]
-        stack.append((0, scene, local))
-        raise Yielded(line=0, carry=carry)  # Yield to allow the game loop to continue
+        stack.append((scene, local))
+        raise Yielded(carry=carry)  # Yield to allow the game loop to continue
 
     @exportableAs("exit")
     def exitScene(self, env: Crucible, carry: Optional[dict] = None):
         """
         Pops the current scene off the stack, returning to the previous scene.  If there is no previous
-        scene, it will close the user's session.  This allows for scene transitions and returning to
-        previous scenes.  The dictionary 'carry' will pass those keys to the previous scene.
+        scene, it will close the user's session.
         Args:
             - carry (dict, optional): Additional data to carry over to the previous scene.
         """
         user = env.parent # grab user scope
         stack: list = user["STACK"]
         stack.pop()
-        raise Yielded(line=0, carry=carry)  # Yield to allow the game loop to continue
+        raise Yielded(carry=carry)  # Yield to allow the game loop to continue
 
-    @resolvable
+    @static_eval_safe 
     @exportableAs("keys")
     def keyList(self, env: Crucible, value: dict) -> list:
-        """
-        Return a list of keys from the given dictionary.
-        Args:
-            - value (dict): The dictionary to get keys from.
-        Returns:
-            - list: A list of keys from the dictionary.
-        """
         return list(value.keys())
 
-    @resolvable
+    @static_eval_safe 
     @exportable
     def batch(self, env: Crucible, *items: str) -> dict:
-        """
-        Create a batch mapping from a list of strings, where each string is split by '.' and the parts are
-        concatenated to form keys.  If the key begins with a '_', it will be stripped and used as a default
-        argument in the map.
-        Args:
-            - items (str): A variable number of strings to create the batch mapping from.
-        Returns:
-            - dict: A dictionary mapping each concatenated key to its full string.
-        """
         map = {}
         for item in items:
             if not isinstance(item, str):
                 raise TinderBurn(f"Batch item must be a String, got {type(item).__name__}.")
-            if item.startswith("_"):
-                map[item[:1]] = item[1:]  # Use the item as a default argument
-            else:
-                parts = item.split('.')
-                full = "".join(parts)
-                key = ""
-                for part in parts:
-                    key += part
-                    map[key] = full
+            parts = item.split('.')
+            full = "".join(parts)
+            key = ""
+            for part in parts:
+                key += part
+                map[key] = full
         return map
     
+    @exportableAs("match")
+    def matchInput(self, env: Crucible, input: str, matches: dict, otherwise: str | int = None):
+        """
+        Match the input against a dictionary of possible matches and returns the corresponding value, or
+        jumps to otherwise if no match is found. Using a <batch> will allow you to match against more
+        complex inputs.  See the language documentation for more details.
+        Args:
+            - input (str): The input to match.
+            - matches (dict): A dictionary of possible matches.
+            - otherwise (str | int, optional): The value to return if no match is found.
+        """
+        if input not in matches and otherwise:
+            raise Jumped(otherwise)
+        return matches.get(input)
+
     @exportable
     def debug(self, env: Crucible, message: str):
         """
@@ -124,7 +133,7 @@ class BaseLibrary(Library):
         """
         print(f"[debug] {message}")
 
-    @resolvable
+    @static_eval_safe 
     @exportable
     def len(self, env: Crucible, value: Any):
         """
@@ -136,7 +145,7 @@ class BaseLibrary(Library):
         """
         return len(value)
 
-    @resolvable
+    @static_eval_safe 
     @exportableAs("str")
     def concat(self, env: Crucible, *args: Any) -> str:
         """
@@ -148,7 +157,7 @@ class BaseLibrary(Library):
         """
         return ''.join(str(arg) for arg in args)
 
-    @resolvable
+    @static_eval_safe 
     @exportable
     def color(self, env: Crucible, color: str):
         """

@@ -1,18 +1,21 @@
 Line         -> ( Rule / Newline )
 Newline      -- ~'\n|\r\n|\r' # newline
 
-Rule         -> ( Comment / From / Import / Const / Interrupt / Goto / Statement ) Newline
+Rule         -> ( Comment / From / Import / Const / Interrupt / Goto / Else / Statement ) Newline
 From         <- "from" Identifier "import" Identifier ( "," Identifier )*
 Import       <- "import" Identifier ( "as" Identifier )?
 Interrupt    <- "catch" String "at"? Identifier
 Comment      -- "``" ~'[^\n]*'
-Goto         <- "#" Identifier ( "else" Identifier )?
+Goto         <- "#" Identifier ( Foriter / Foreach / "or" Identifier )?
+Foreach      <- Identifier ( "," Identifier )? "in" Expression ";" Identifier
+Foriter      <- Identifier "=" Expression ";" Expression ";" Identifier
 Const        <- "const" Identifier ( "is" / "=" ) ( Expression )
 Statement    <- Keyword Condition? Comment?
+Else         <- "else" Keyword Condition? Comment?
 
 Keyword      -> Write / Call / Put / Set / Inc / Dec / Swap / Input / Yield / Stop / Jump / Return
 Put          <- "put" Expression ( "Before" / "After" ) Identifier
-Set          <- "set" Identifier (( "to" )? Expression )?
+Set          <- "set" Identifier ( "," Identifier )* (( "to" / "=" )? Expression ( "," Expression )* )?
 Inc          <- "inc" Identifier Expression?
 Dec          <- "dec" Identifier Expression?
 Swap         <- "swap" Identifier ","? Identifier
@@ -27,7 +30,7 @@ Return       <- "return"
 Condition    <- "if" Expression
 Expression   -> Indirect / Access
 Indirect     <- "@" Access
-Access       ~> Or (( In / FromSymbol / At ) ( Access ))?
+Access       ~> Or (( In / FromSymbol / At ) Access )?
 Or           ~> And ( or And )*
 And          ~> Binary ( and Binary )*
 Binary       ~> Unary (( EqualEqual / BangEqual / LeftAngleBracketEqual / RightAngleBracketEqual / LeftAngleBracket / RightAngleBracket / Times / SlashSlash / Slash / Plus / Minus ) Unary)*

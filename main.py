@@ -27,14 +27,22 @@ class LocalUser(SocketUser):
     def __repr__(self):
         return "<LocalUser>"
 
-def debug():
-    path = ""
-    #path = "home/start.v2.tinder"
+def test_compile(run = True):
+    path = "test.v2.tinder"
     torchbox: Game = instantiate_game(path, debug = True)
+    print( torchbox.scenes["test"])
+    if not run:
+        return exit()
     player = LocalUser(None, torchbox.queue, torchbox.log)
-    #print( torchbox.scenes["home/start"])
-    #exit()
-    player.environment["STACK"] = [(0,"login/faststart",None)]
+    player.environment["STACK"] = [("test",None)]
+    player.login()
+    torchbox.run()
+    exit()
+
+def debug():
+    torchbox: Game = instantiate_game(debug = True)
+    player = LocalUser(None, torchbox.queue, torchbox.log)
+    player.environment["STACK"] = [("login/faststart",None)]
     player.login()
     torchbox.run()
     print(RESET)
@@ -52,4 +60,4 @@ def main():
     print(RESET)
 
 if __name__ == "__main__":
-    debug()
+    test_compile()

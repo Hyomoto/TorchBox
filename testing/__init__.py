@@ -1,4 +1,5 @@
 from typing import Any, Callable, Tuple
+import time
 
 class TestException(Exception):
     def __init__(self, message: str):
@@ -30,6 +31,17 @@ class Ansi:
     NEGATIVE = "\033[7m"
     CROSSED = "\033[9m"
     RESET = "\033[0m"
+
+class Profiler:
+    def __init__(self, label="Profiled block"):
+        self.label = label
+    def __enter__(self):
+        self.start = time.perf_counter()
+        return self
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        self.end = time.perf_counter()
+        elapsed = self.end - self.start
+        print(f"[{self.label}] Elapsed time: {elapsed:.4f} seconds")
 
 class UnitTest:
     PASS_EMOJI = "✅ "

@@ -9,5 +9,5 @@
 `` refresh user data
   set user.attributes.actions.current to user.attributes.actions.max
   set user.attributes.hp.current to 1 if user.attributes.hp.current is 0
-# end else for
+# end or for
   stop

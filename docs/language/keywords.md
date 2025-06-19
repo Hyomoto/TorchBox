@@ -8,7 +8,7 @@
 
 #### `import`
 
-Brings an external API—such as a set of functions, utilities, or constants—into your script’s namespace. After importing, you access its contents using dot notation.
+Brings an external library as a set of functions, utilities, or constants—into your script’s namespace. After importing, you access its contents using dot notation.
 
 ```tinder
 import math
@@ -16,10 +16,6 @@ import text as txt
 ```
 
 * Use `as` to assign a custom name.
-* Only APIs provided by the engine or standard library can be imported this way.
-
-?> **Tip:**
-APIs let you extend Tinder with engine-level features or reusable libraries, while keeping your script logic separate.
 
 ---
 
@@ -35,7 +31,7 @@ sqrt(25)
 * Imported items appear as if they were defined directly in your script.
 
 ?> **Note:**
-`from` is best used when you need only a few symbols from a large API.
+`from` is best used when you need only a few symbols from a large library.
 
 ---
 
@@ -65,20 +61,96 @@ catch "CrucibleValueNotFound" at handle_missing
 
 * Used for graceful error recovery.
 
-### Control flow
+---
+
+### Control Flow
+
+#### Basic Labels
+
+A **label** defines a jump target for control flow. Use `# label` to mark a point in your script that other statements (such as `jump`) can refer to.
+
+```tinder
+#retry
+#end
+```
+
+?> **Tip:** Labels are the core building blocks of Tinder’s flat, explicit control flow.
 
 ---
 
-#### `# <label>`
+#### Or Labels
 
-Defines a jump target for control flow. Labels may optionally use `else` to provide an alternate destination when the label is reached "naturally" (not via a jump).
+You can define a label with an `or` clause to specify where control should go if this label is reached "naturally" (by falling through), rather than by a jump.
 
 ```tinder
-# retry
-# end else retry
+#end or retry
 ```
 
-?> **Labels** are the core building blocks of Tinder’s flat, explicit flow control.
+* If you `jump end`, execution continues at `#end` as normal.
+* If execution *falls through* to `#end`, it jumps instead to `retry`.
+
+**Equivalent sugar:**
+
+```tinder
+jump retry
+#end
+```
+
+---
+
+#### Foriter Labels
+
+A **foriter label** provides a simple way to write C-style for-loops using labels. Syntax:
+
+```tinder
+#for i = 0; i < 5; endfor
+```
+
+This expands to:
+
+```tinder
+set i to 0
+#for
+jump endfor if not i < 5
+```
+
+* Initialize the loop variable.
+* Label marks loop start.
+* Conditional jump checks the loop condition.
+
+Use a matching label (`#endfor`) as your loop exit.
+
+---
+
+#### Foreach Labels
+
+A **foreach label** makes iterating over arrays or tables easier, auto-assigning variables to each item or key/value pair.
+
+**Arrays:**
+
+```tinder
+#foreach item in ITEMS; enditems
+```
+
+Desugars to:
+
+* Sets up iteration over `ITEMS`
+* Assigns each value to `item` in turn
+* Jumps to `enditems` when done
+
+**Tables:**
+
+```tinder
+#foreach key, value in MAP; endmap
+```
+
+Desugars to:
+
+* Assigns key and value for each entry in `MAP`
+* Jumps to `endmap` when done
+
+?> **Note:**
+Tinder automatically handles the setup, index/key extraction, and loop control—making iteration easy and readable.
 
 ## Statement Keywords
 
@@ -90,10 +162,10 @@ Statement keywords are the heart of Tinder’s scripting logic. Each statement b
 
 #### `set`
 
-Assigns a value to a variable.
+Assigns a value to a variable.  By separating identifiers and assignments you can batch set.
 
 ```tinder
-set counter to 0
+set x, y to 0, 0
 set user to input()
 ```
 
@@ -113,6 +185,23 @@ Decrements a variable by 1 or a specified amount.
 ```tinder
 dec lives
 dec time 5
+```
+
+#### `put`
+
+Places an item before or after an array.
+
+```tinder
+put "this" before list
+put "that" after list
+```
+
+#### `swap`
+
+Swap two variable values.
+
+```tinder
+swap a, b
 ```
 
 ---
@@ -155,12 +244,14 @@ call battle.start()
 
 #### `jump`
 
-Transfers execution to a label, line number, or string identifier.
+Transfers execution to a label or line number.
 
 ```tinder
 jump to retry
 jump end if done
 ```
+
+?> **Tip** Using an indirect expression allows you to resolve from a value to a jump target.  See (indirect)[] for more information.
 
 #### `return`
 
