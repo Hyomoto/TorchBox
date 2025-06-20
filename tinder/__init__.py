@@ -273,36 +273,20 @@ class Number(Constant):
     def type(self):
         return float
 
-class Term(String):
-    def __repr__(self):
-        return f"Term({self.value})"
-
 # values
 
-class Identifier(Kindling):
+class Identifier(Value):
     """A lookup retrieves a variable from the environment."""
-    def __init__(self, *terms: Term ):
-        self.path = list(terms)
+    def __init__(self, value: String | str ):
+        if isinstance(value, String):
+            self.value: str = value.value
+        else:
+            self.value = value
+    @property
+    def type(self):
+        return str
     def transmute(self, env: Crucible):
-        path = []
-        for term in self.path:
-            if isinstance(term, Kindling):
-                path.append(term.transmute(env))
-            else:
-                path.append(term)
-        return env.get(path)
-    def __repr__(self):
-        return f"Identifier({self.path})"
-
-class ResolvedIdentifier(Identifier):
-    """A fully resolved identifier."""
-    def __init__(self, path: List):
-        self.path = path
-    def transmute(self, env: Crucible):
-        print(self.path)
-        return env.get(self.path)
-    def __repr__(self):
-        return f"Identifier({'.'.join(self.path)})"
+        return env.get(self.value)
 
 class Array(Value):
     """A group of values that can be retrieved as a list."""
@@ -729,14 +713,13 @@ class Set(Keyword):
     def __init__(self, *terms: Kindling):
         if len(terms) % 2 != 0:
             raise TinderBurn("Set requires an even number of terms (identifier, value pairs).")
-        keys: List[Identifier] = [key for key in terms[:len(terms) // 2]] # type: ignore
+        keys = [key.value for key in terms[:len(terms) // 2]]
         values = terms[len(terms) // 2:]
         self.pairs: List[Tuple[Identifier, Kindling]] = list(zip(keys, values))
     def transmute(self, env: Crucible):
         for identifier, value in self.pairs:
-            path = identifier.transmute(env)
             value = value.transmute(env) if value else None
-            env.set(path, value)
+            env.set(identifier, value)
     def __repr__(self):
         return f"Set(pairs={self.pairs})"
 
@@ -844,8 +827,8 @@ class NoOp(Kindling):
 
 class Goto(Keyword):
     """A no-operation instruction used to flag line numbers by name."""
-    def __init__(self, identifier: Term | String, otherwise: Optional[Identifier | Foreach | Foriter] = None):
-        self.identifier = identifier.value
+    def __init__(self, identifier: Identifier | String, otherwise: Optional[Identifier | Foreach | Foriter] = None):
+        self.identifier: str = identifier.value
         if isinstance(otherwise, Foreach):
             output = [
                 Set(Identifier("__ITER__"), otherwise.iterable),
@@ -865,7 +848,7 @@ class Goto(Keyword):
             output = [
                 otherwise.assign,
                 Goto(identifier),
-                Statement(Jump(otherwise.jump), Condition(Not(otherwise.condition))),
+                Statement(Jump(otherwise.jump), Not(otherwise.condition)),
             ]
             raise SymbolReplace(output)
         self.otherwise = Jump(otherwise) if otherwise else None
@@ -1017,19 +1000,12 @@ def _(node: Set | Const, env: Crucible, libs: dict):
 
 @resolve.register
 def _(node: Identifier, env: Crucible, libs: dict):
-    resolved = 0
-    for i, term in enumerate(node.path):
+    if node.value in env.constants:
         try:
-            r = resolve(term, env, libs)
-            if isinstance(r, Constant):
-                node.path[i] = r.value
-                resolved += 1
-            else:
-                node.path[i] = r
+            value = node.transmute(env)
+            return Constant(value)
         except Exception:
-            continue
-    if resolved == len(node.path):
-        return ResolvedIdentifier(node.path)
+            pass
     return node
 
 @resolve.register

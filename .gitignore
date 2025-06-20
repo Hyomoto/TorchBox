@@ -1,13 +1,6 @@
 ignore/
 saves/
 
-# Repit
-.replit
-uv.lock
-pyproject.toml
-.pythonlibs/
-.upm/
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

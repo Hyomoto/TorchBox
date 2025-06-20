@@ -1,5 +1,5 @@
 import os
-from typing import Set, Optional, Callable
+from typing import Set, Optional
 from tinder.crucible import Crucible, CrucibleAccess
 from mixins.serializer import Serializer
 import threading
@@ -8,20 +8,6 @@ import json
 
 class RealmError(Exception):
     """Base class for all realm-related exceptions."""
-    pass
-
-class RealmFileError(RealmError):
-    """Raised when a realm file is not found or cannot be accessed."""
-    def __init__(self, message: str, file: str):
-        super().__init__(message)
-        self.file = file
-
-class RealmSaveError(RealmFileError):
-    """Raised when a realm fails to save."""
-    pass
-
-class RealmLoadError(RealmFileError):
-    """Raised when a realm fails to load."""
     pass
 
 class User(Serializer):
@@ -138,9 +124,9 @@ class Realm(Serializer):
             realm.addUser(user)
         return realm
 
-    def save(self, to: str, callback: Callable):
+    def save(self, to: str):
         """Save the realm to a file asynchronously."""
-        def serialize_and_save(finalize: Callable):
+        def serialize_and_save():
             try:
                 with open(to + ".temp", "w") as f:
                     json.dump(self.serialize(), f, indent=4)
@@ -149,24 +135,20 @@ class Realm(Serializer):
                         os.remove(to + ".bak")
                     os.rename(to, to + ".bak")
                 os.rename(to + ".temp", to)
-                finalize()
-            except FileNotFoundError as e:
-                finalize(RealmSaveError(f"Failed to save realm: {e}", file = to))
+            except Exception as e:
+                raise RealmError(f"Failed to save realm: {e}") from e
             finally:
                 self._saving.release()
         self._saving = getattr(self, "_saving", threading.Lock())
         if not self._saving.acquire(blocking=False):
             raise RealmError("Realm is already being saved.")
-        threading.Thread(target=serialize_and_save, args=(callback,), daemon=False).start()
+        threading.Thread(target=serialize_and_save, daemon=False).start()
 
     @classmethod
     def load(cls, from_path: str, classes: Optional[dict] = None):
         """Load the realm from a file."""
-        try:
-            with open(from_path, "r") as f:
-                data = f.read()
-        except FileNotFoundError as e:
-            raise RealmLoadError(f"Failed to load realm: {e}", file = from_path)
+        with open(from_path, "r") as f:
+            data = f.read()
         return cls.deserialize(data, classes)
 
     def __contains__(self, username: str) -> bool:
