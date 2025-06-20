@@ -634,8 +634,6 @@ class Condition(Kindling):
         self.condition = condition
     def transmute(self, env: Crucible):
         result = True if self.condition.transmute(env) else False
-        print(self)
-        print(result)
         env.set("__CONDITION__", result)
         return result
     def __repr__(self):
@@ -661,7 +659,6 @@ class Else(Kindling):
         self.operation = operation
         self.condition = condition
     def transmute(self, env: Crucible):
-        print(env.get("__CONDITION__"))
         if env.get("__CONDITION__"): # if last condition was true, skip this
             return
         if self.condition and not self.condition.transmute(env):

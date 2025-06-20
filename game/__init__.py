@@ -5,8 +5,9 @@ from firestarter import FirestarterError
 from tinder import Tinderstarter, Tinder, Kindling, TinderBurn
 from tinder import Imported, Yielded, Halted
 from tinder.crucible import Crucible, PROTECTED, READ_ONLY, NO_SHADOWING
-from tinder.library import PermissionHolder, Library
+from tinder.library import Library
 from torchbox.logger import Logger, Log, Critical, Warning, Info, Debug
+from mixins.permissions import PermissionHolder
 from constants import RESET
 from .memory.protected import map as protectedMemory
 from .memory.globals import map as globalMemory

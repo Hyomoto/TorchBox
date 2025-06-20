@@ -1,5 +1,5 @@
 from typing import Dict, List, Any
-from tinder.library import Library, exportable, exportableAs, import_libraries as _import_libraries
+from tinder.library import Library, exportable, exportableAs, import_libraries as _import_libraries, static_eval_safe
 from torchbox.realm import Realm, User
 from ..memory.user import Player
 from tinder import TinderBurn, Yielded
@@ -13,25 +13,6 @@ import re
 
 def import_libraries(context: object, include: List[str] = ["all"], exclude: List[str] = []) -> Dict[str, Library]:
     return _import_libraries(__name__, context, include=include, exclude=exclude)
-
-def static_eval_safe (fn):
-    """
-    Marks a function as safe for static (compile-time) evaluation.
-
-    This decorator signals to the compiler resolver that the function
-    can be *safely* evaluated during compilation if desired, because it
-    has no side effects and produces deterministic output for the same inputs.
-    
-    Note:
-        - The resolver uses this as a hint to optimize code by folding
-          function calls into constant values when possible.
-        - Marking a function with this does not guarantee it will be
-          resolved at compile time, only that it is safe to try.
-        - Functions that cause side effects or rely on runtime state
-          should not be marked as static_eval_safe.
-    """
-    fn._resolvable = True
-    return fn
 
 class BaseLibrary(Library):
     """

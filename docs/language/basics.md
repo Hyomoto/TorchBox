@@ -36,16 +36,6 @@ set a to 1
 jump to line_label if a > 0
 ```
 
-**Else Statements** are a special form of statement that begins with `else`.  These can be used to chain statement checks.
-
-```tinder
-jump to foo if a > 0
-else jump to baz if a < 0
-```
-
-!> Use of `else` will check if the *last* evaluated condition was false and, if so, run this line.  Much like the return keyword, this is not the same as a normal else because there is no block evaluation.  Thus this is typically meant to be used *immediately* following a failed condition.
-
-
 A typical script:
 
 ```tinder

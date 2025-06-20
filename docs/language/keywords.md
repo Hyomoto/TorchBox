@@ -158,11 +158,29 @@ Statement keywords are the heart of Tinder’s scripting logic. Each statement b
 
 ---
 
+### Else
+
+`else` allows you to specify an alternate action if the *last* evaluated condition was false.
+
+```tinder
+write "Hello there!" if JUST_ENTERED
+else write "Anything else?"
+```
+
+!> **Note:**
+Because Tinder is blockless, `else` always refers to the last evaluated condition—even if there are unrelated lines in between.
+It does **not** create a block or require direct adjacency. Be careful to keep your conditional logic clear and well-organized.
+
+**In short:**
+`else` is a flat-language shorthand for fallback actions after a failed condition. It helps avoid writing multiple conditionals, but always remember: it doesn’t group statements the way structured languages do.
+
+---
+
 ### Assignment and Mutation
 
 #### `set`
 
-Assigns a value to a variable.  By separating identifiers and assignments you can batch set.
+Assigns a value to a variable—or several at once. By separating identifiers and values with commas, you can batch assign multiple variables in one line.
 
 ```tinder
 set x, y to 0, 0
@@ -214,7 +232,7 @@ Appends text (with a newline) to a variable, or outputs it directly.
 
 ```tinder
 write "Hello, world!" to output
-"Welcome!"   // Implicit write to default output
+"Welcome!"   \`\` Implicit write to default output
 ```
 
 #### `input`

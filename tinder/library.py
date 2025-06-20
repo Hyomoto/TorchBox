@@ -1,5 +1,6 @@
 from typing import List, Dict, Tuple, Optional, Any
 from abc import ABC, abstractmethod
+from mixins.permissions import PermissionRequirer
 import inspect
 import sys
 
@@ -24,25 +25,24 @@ def exportableAs(name: str):
         return fn
     return decorator
 
-class PermissionHolder:
-    """An entity that has permissions."""
-    def __init__(self, permissions: Optional[List[str]] = None, **kwargs):
-        self.permissions = permissions or []
-        super().__init__(**kwargs)
+def static_eval_safe (fn):
+    """
+    Marks a function as safe for static (compile-time) evaluation.
 
-class PermissionRequirer:
-    """An entity that requires permissions."""
-    def __init__(self, permissions: Optional[List[str]] = None, **kwargs):
-        self.permissions = permissions or []
-        super().__init__(**kwargs)
-
-    def hasPermission(self, check: object) -> bool:
-        """Check if the required permissions are present in the given holder."""
-        if not self.permissions:
-            return True
-        if not isinstance(check, PermissionHolder):
-            return False
-        return all(perm in check.permissions for perm in self.permissions)
+    This decorator signals to the compiler resolver that the function
+    can be *safely* evaluated during compilation if desired, because it
+    has no side effects and produces deterministic output for the same inputs.
+    
+    Note:
+        - The resolver uses this as a hint to optimize code by folding
+          function calls into constant values when possible.
+        - Marking a function with this does not guarantee it will be
+          resolved at compile time, only that it is safe to try.
+        - Functions that cause side effects or rely on runtime state
+          should not be marked as static_eval_safe.
+    """
+    fn._resolvable = True
+    return fn
 
 class Library(PermissionRequirer, dict, ABC):
     """Base class for APIs, providing permission management and export functionality."""
