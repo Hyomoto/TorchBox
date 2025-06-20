@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Union, Dict, List, Sequence, Optional
 from mixins.serializer import Serializer, serialize, deserialize
 
 class CrucibleAccess:
@@ -18,28 +18,50 @@ class CrucibleError(Exception):
     """Base class for all Crucible-related exceptions."""
     pass
 
+class CrucibleKeyNotFound(CrucibleError):
+    """
+    Raised when a key is not found in the crucible.
+    Key 'key' not found at 'path'.
+    """
+    def __init__(self, key: str | int, path: str):
+        super().__init__(f"{'Key' if isinstance(key, str) else 'Index'} '{key}' not found at '{path}' in the crucible.")
+
 class CrucibleValueNotFound(CrucibleError):
-    """Raised when a variable is not found in the crucible."""
-    def __init__(self, var: str):
+    """
+    Raised when a variable is not found in the crucible.
+    Variable 'var' not found in the crucible.
+    """
+    def __init__(self, var: str | int):
         super().__init__(f"Variable '{var}' not found in the crucible.")
 
 class CrucibleWriteError(CrucibleError):
-    """Raised when a write operation fails."""
-    def __init__(self, var: str, message: str):
+    """Raised when a write operation fails.
+    Cannot write 'var': message
+    """
+    def __init__(self, var: str | int, message: str):
         super().__init__(f"Cannot write '{var}': {message}")
 
 class CrucibleWriteErrorShadowing(CrucibleWriteError):
-    """Raised when a write operation cannot shadow an existing variable."""
-    def __init__(self, var: str):
+    """
+    Raised when a write operation cannot shadow an existing variable.
+    Shadowing is not allowed in this scope.
+    """
+    def __init__(self, var: str | int):
         super().__init__(var, "shadowing is not allowed in this scope.")
 
 class CrucibleWriteErrorProtected(CrucibleWriteError):
-    """Raised when a write operation is attempted on a protected variable."""
-    def __init__(self, var: str, is_type: str, violation: str):
+    """
+    Raised when a write operation is attempted on a protected variable.
+    Variable 'var' is protected and cannot be mutated to 'violation'.
+    """
+    def __init__(self, var: str | int, is_type: str, violation: str):
         super().__init__(var, f"variable is {is_type} and cannot be mutated to {violation}.")
 
 class CrucibleWriteErrorReadOnly(CrucibleWriteError):
-    """Raised when a write operation is attempted on a read-only scope."""
+    """
+    Raised when a write operation is attempted on a read-only scope.
+    Scope is read-only and cannot be written to.
+    """
     def __init__(self, var: str):
         super().__init__(var, "scope is read-only and cannot be written to.")
 
@@ -53,9 +75,21 @@ class Crucible(Serializer):
         self.constants = []
         super().__init__()
 
-    def __contains__(self, var: str):
+    def _walk_path(self, path: Sequence[str | int]):
+        walk = 0
         try:
-            self.get(var)
+            scope = self
+            for point in path:
+                scope = scope[point] # type: ignore
+                walk += 1
+        except Exception:
+            walked = '.'.join([str(v) for v in path[:walk]] or ['root'])
+            raise CrucibleKeyNotFound(path[walk], walked)
+        return scope
+
+    def __contains__(self, path: List[str | int]):
+        try:
+            self._walk_path(path)
             return True
         except CrucibleError:
             return False
@@ -75,11 +109,11 @@ class Crucible(Serializer):
         flags = flags.strip()
         return f"Crucible[{flags}]({self.variables})"
 
-    def __getitem__(self, var: str):
-        return self.get(var)
+    def __getitem__(self, key: str):
+        return self.variables[key]
 
-    def __setitem__(self, var: str, value):
-        self.set(var, value)
+    def __setitem__(self, key: str, value):
+        self.variables[key] = value
 
     def serialize(self) -> Dict[str, Any]:
         """Serialize the crucible to a dictionary representation."""
@@ -102,107 +136,74 @@ class Crucible(Serializer):
             self.constants.extend(constants)
         return self
 
-    def set(self, var: str, value):
-        def write(var, key, value):
-            if isinstance(var, dict):
-                var[key] = value
-            elif isinstance(var, list):
-                var[int(key)] = value
-            else:
-                setattr(var, key, value)
-
-        def read(var, key):
-            if isinstance(var, dict):
-                return var[key]
-            elif isinstance(var, list):
-                return var[int(key)]
-            return getattr(var, key)
-
+    def set(self, path: Sequence[str | int], value):
         def write_to_self(var, value):
-            points = var.split('.')
-            scope = self.variables
-            if points[0] in self.constants:
-                raise CrucibleWriteError(var, "variable is a constant.")
-            while len(points) > 1:
-                if points[0] not in scope:
-                    if self.access & CrucibleAccess.READ_ONLY or self.access & CrucibleAccess.PROTECTED:
-                        break # break error to outer scope
-                    write(scope, points[0], {})
-                scope = read(scope, points[0])
-                points.pop(0)
+            key = path[-1]
+            if key in self.constants:
+                raise CrucibleWriteError(var, "variable is constant and cannot be mutated.")
+            scope = self._walk_path(path[:-1])
+            protected = self.access & PROTECTED
             if self.access & READ_ONLY:
                 raise CrucibleWriteErrorReadOnly(var)
-            if self.access & PROTECTED:
-                if points[0] in scope:
-                    if not isinstance(value, type(scope[points[0]])):
-                        raise CrucibleWriteErrorProtected(var, type(scope[points[0]]), type(value))
-                else:
-                    raise CrucibleWriteError(var, "scope is protected.")
-            write(scope, points[0], value)
+            if isinstance(scope, list):
+                if not isinstance(key, int):
+                    raise CrucibleKeyNotFound(key,'.'.join([str(v) for v in path[:-1]]))
+                if key < 0 or key >= len(scope):
+                    raise CrucibleError(f"Index '{key}' out of range for list.")
+                if protected and not isinstance(value, type(scope[key])):
+                    raise CrucibleWriteErrorProtected('.'.join([str(v) for v in path]), type(scope[key]), type(value))
+                scope[key] = value
+            elif isinstance(scope, dict):
+                if protected:
+                    if key not in scope:
+                        raise CrucibleWriteError('.'.join([str(v) for v in path]), "scope is protected.")
+                    if not isinstance(value, type(scope[key])):
+                        raise CrucibleWriteErrorProtected('.'.join([str(v) for v in path]), type(scope[key]), type(value))
+                scope[key] = value
+            else:
+                raise CrucibleError(f"Cannot write to '{'.'.join([str(v) for v in path])}': scope is not a list or dictionary.")
 
-        def write_to_base(var, value):
+        def write_to_base(path, value):
             if not self.parent:
-                raise CrucibleWriteError(var, "no parent scope available.")
-            self.parent.set(var, value)
-
-        def is_shadowing(var):
+                raise CrucibleWriteError(path[0], "no parent scope available.")
+            self.parent.set(path, value)
+        
+        def is_shadowing(key: str | int):
             scope = self.parent
-            key = var.split('.')[0]
             while scope:
                 if key in scope.variables:
                     return True
                 scope = scope.parent
             return False
 
+        key = path[0]
         try:
             if not self.access & WRITE_TO_BASE:
-                raise CrucibleWriteError(var, "scope does not allow writing to base.")
-            write_to_base(var, value)
+                raise CrucibleWriteError(key, "scope does not allow writing to base.")
+            write_to_base(path, value)
         except CrucibleError:
-            if self.access & NO_SHADOWING and is_shadowing(var):
+            if self.access & NO_SHADOWING and is_shadowing(key):
                 try:
-                    write_to_base(var, value)
+                    write_to_base(path, value)
                 except CrucibleError:
-                    raise CrucibleWriteErrorShadowing(var)
+                    raise CrucibleWriteErrorShadowing(key)
             else:
-                write_to_self(var, value)
+                write_to_self(path, value)
 
 
-    def get(self, var: str) -> Any:
-        def read(var, key):
-            if isinstance(var, dict):
-                return var[key]
-            elif isinstance(var, list):
-                return var[int(key)]
-            return getattr(var, key)
-
-        def read_from_self(var):
-            points = var.split('.')
-            scope = self.variables
-            for point in points:
-                if point not in scope:
-                    raise CrucibleValueNotFound(var)
-                scope = read(scope, point)
-            return scope
-
-        def read_from_base(var):
+    def get(self, path: Sequence[str | int]) -> Any:
+        def read_from_base(path):
             if self.parent:
-                return self.parent.get(var)
-            raise CrucibleValueNotFound(var)
+                return self.parent.get(path)
+            raise CrucibleValueNotFound(path)
 
         if self.access & CrucibleAccess.READ_FROM_BASE:
             try:
-                return read_from_base(var)
+                return read_from_base(path)
             except CrucibleError:
-                return read_from_self(var)
+                return self._walk_path(path)
         else:
             try:
-                return read_from_self(var)
+                return self._walk_path(path)
             except CrucibleError:
-                return read_from_base(var)
-
-    def call(self, func: str, *args):
-        toCall = self.get(func)
-        if not callable(toCall):
-            raise CrucibleError(f"Function '{func}' is not callable.")
-        return toCall(*args)
+                return read_from_base(path)
