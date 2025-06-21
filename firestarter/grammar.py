@@ -615,9 +615,12 @@ class Grammar:
         def do_flatten(node: Match) -> List[Match]:
             """Flatten AST by discarding scaffolding."""
             if node.rule.identity in self.merge:
-                node.children[0].rule = node.children[0].rule.duplicate()
-                node.children[0].rule.identity = node.rule.identity
-                return node.children[0]
+                child = node.children[0]
+                while child.children:
+                    child = child.children[0]
+                child.rule = child.rule.duplicate()
+                child.rule.identity = node.rule.identity
+                return child
 
             children = []
 
@@ -792,14 +795,10 @@ def make_grammar(text: str, flags: int = Flags.NONE) -> Grammar:
 
     def visit_choice(node: Match, tokens: str) -> Rule:
         rules = [visit(child, tokens) for child in node.children]
-        if len(rules) == 1:
-            return rules[0]
         return RuleChoice(*rules)
 
     def visit_sequence(node: Match, tokens: str) -> Rule:
         rules = [visit(child, tokens) for child in node.children]
-        if len(rules) == 1:
-            return rules[0]
         return RuleAll(*rules)
 
     def visit_prefix(node: Match, tokens: str) -> Rule:

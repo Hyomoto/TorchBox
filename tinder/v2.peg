@@ -1,20 +1,23 @@
-Line         -> ( Rule / Newline )
+Line         -> ( Rule / Newline ) Comment?
 Newline      -- ~'\n|\r\n|\r' # newline
+Comment      -- "#" ~'[^\n]*'
 
-Rule         -> ( Comment / From / Import / Const / Interrupt / Goto / Else / Statement ) Newline
+Rule         -> ( If / EndIf / EndFor / Foreach / Foriter / Condition / From / Import / Const / Interrupt / Goto / Else / Statement ) Newline
 From         <- "from" Identifier "import" Identifier ( "," Identifier )*
 Import       <- "import" Identifier ( "as" Identifier )?
 Interrupt    <- "catch" String "at"? Identifier
-Comment      -- "``" ~'[^\n]*'
-Goto         <- "#" Identifier ( Foriter / Foreach / "or" Identifier )?
-Foreach      <- Identifier ( "," Identifier )? "in" Expression ";" Identifier
-Foriter      <- Identifier "=" Expression ";" Expression ";" Identifier
+Goto         <- "$" Identifier ( "or" Identifier )?
+Foreach      <- "foreach" Identifier ( "," Identifier )? "in" Expression
+Foriter      <- "for" Identifier "=" Expression ";" Expression ";" Keyword
 Const        <- "const" Identifier ( "is" / "=" ) ( Expression )
-Statement    <- Keyword Condition? Comment?
-Else         <- "else" Keyword Condition? Comment?
+Statement    <- Keyword Condition?
+If           <- Condition
+Else         <- "else" Condition?
+EndIf        <- "endif"
+EndFor       <- "endfor"
 
 Keyword      -> Write / Call / Put / Set / Inc / Dec / Swap / Input / Yield / Stop / Jump / Return
-Put          <- "put" Expression ( "Before" / "After" ) Identifier
+Put          <- "put" Expression ( Before / After ) Identifier
 Set          <- "set" Identifier ( "," Identifier )* (( "to" / "=" )? Expression ( "," Expression )* )?
 Inc          <- "inc" Identifier Expression?
 Dec          <- "dec" Identifier Expression?
@@ -47,11 +50,11 @@ True         <- "True"
 False        <- "False"
 Function     <- Identifier "(" Arguments? ")"
 ws           -- ~'[ \\t]+' # ' ' or '\t'
-Arguments    -> Access ( "," Access )* 
+Arguments    -> Expression ( "," Expression )* 
 
-Identifier   <- ~"[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*"
+Identifier   <> ~"[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*"
 String       <> ~'"(?:[^"\\]|\\.)*"' / ~"'(?:[^'\\]|\\.)*'"
-Number       <- ~"-?[0-9]+(\\.[0-9]+)?"
+Number       <> ~"-?[0-9]+(\\.[0-9]+)?"
 [EqualEqual] <- ws? "==" ws? / ws "is" ws
 [BangEqual]  <- ws? "!=" ws? / ws "is not" ws
 LeftAngleBracketEqual  <- "<="
@@ -64,10 +67,14 @@ RightAngleBracketEqual <- ">="
 [Percent]    <- ws? "%" ws? / ws "mod" ws
 [Plus]       <- ws? "+" ws? / ws "plus" ws
 [Minus]      <- ws? "-" ws? / ws "minus" ws
+PlusEquals   <- ws"+="
+MinusEquals  <- ws"-="
+TimesEquals  <- ws"*="
+SlashEquals  <- ws"/="
 [Bang]       <- ws "not" ws / ws? "!" !ws
 [FromSymbol] <- ws "from" ws / "<-"
-[After]      <- ws "after" ws / ">" # after or >
-[Before]     <- ws "before" ws / "<" # before or <
+[After]      <- ws "after" ws / ">" ws # after or >
+[Before]     <- ws "before" ws / "<" ws # before or <
 [In]         <- ws "in" ws / "?" # in or ?
 [At]         <- ws "at" ws / "@"
 [or]         -- ws "or" ws / ws? "|" ws?

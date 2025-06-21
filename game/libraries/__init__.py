@@ -31,13 +31,11 @@ class BaseLibrary(Library):
             - scene (str): The name of the scene to change to.
             - carry (dict, optional): Additional data to carry over to the new scene.
         """
-        script = self.context.get(scene)
-        if not script:
-            raise TinderBurn(f"Scene '{scene}' not found.")
         user = env.parent # grab user scope
-        while user["STACK"]:
-            user["STACK"].pop()
-        user["STACK"].append((scene, None))
+        stack: list = user["STACK"]
+        while stack:
+            stack.pop()
+        stack.append(self.context.new_scope(scene, user))
         raise Yielded(carry=carry)  # Yield to allow the game loop to continue
 
     @exportableAs("enter")
@@ -48,13 +46,9 @@ class BaseLibrary(Library):
             - scene (str): The name of the scene to enter.
             - carry (dict, optional): Additional data to carry over to the new scene.
         """
-        script = self.context.get(scene)
-        if not script:
-            raise TinderBurn(f"Scene '{scene}' not found.")
         user = env.parent # grab user scope
-        local = Crucible(NO_SHADOWING, parent=user) # initialize new local scope
         stack: list = user["STACK"]
-        stack.append((scene, local))
+        stack.append(self.context.new_scope(scene, user))
         raise Yielded(carry=carry)  # Yield to allow the game loop to continue
 
     @exportableAs("exit")
@@ -68,6 +62,7 @@ class BaseLibrary(Library):
         user = env.parent # grab user scope
         stack: list = user["STACK"]
         stack.pop()
+        print(user)
         raise Yielded(carry=carry)  # Yield to allow the game loop to continue
 
     @static_eval_safe 
@@ -82,29 +77,17 @@ class BaseLibrary(Library):
         for item in items:
             if not isinstance(item, str):
                 raise TinderBurn(f"Batch item must be a String, got {type(item).__name__}.")
-            parts = item.split('.')
-            full = "".join(parts)
-            key = ""
-            for part in parts:
-                key += part
-                map[key] = full
+            if item.startswith("_"):
+                map["_"] = item[1:]
+            else:
+                parts = item.split('.')
+                full = "".join(parts)
+                key = ""
+                for part in parts:
+                    key += part
+                    map[key] = full
         return map
     
-    @exportableAs("match")
-    def matchInput(self, env: Crucible, input: str, matches: dict, otherwise: str | int = None):
-        """
-        Match the input against a dictionary of possible matches and returns the corresponding value, or
-        jumps to otherwise if no match is found. Using a <batch> will allow you to match against more
-        complex inputs.  See the language documentation for more details.
-        Args:
-            - input (str): The input to match.
-            - matches (dict): A dictionary of possible matches.
-            - otherwise (str | int, optional): The value to return if no match is found.
-        """
-        if input not in matches and otherwise:
-            raise Jumped(otherwise)
-        return matches.get(input)
-
     @exportable
     def debug(self, env: Crucible, message: str):
         """

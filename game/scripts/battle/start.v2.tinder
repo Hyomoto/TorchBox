@@ -1,0 +1,41 @@
+import random
+    const cmd = batch("f.ight", "r.un", "_failed_input")
+    set PHP to USER.attributes.hp.current
+    set EHP to 10
+# start
+    "`3You find a `11stray goblin`3 in the alleyway, looking for trouble."
+    "`3It looks like it wants to fight you!"
+# loop
+    "You have `11[[PHP]]`3 HP, and the goblin has `11[[EHP]]`3 HP."
+    input "`3What do you want to do? (F)ight or (R)un? "
+    set INPUT to INPUT from cmd
+    call debug(cmd)
+    call debug(INPUT)
+    jump failed_input if INPUT is "failed_input"
+    set ORDER to [ @INPUT ]
+    put enemy after ORDER if random.choice([True, False]) `` 50% chance to attack first
+    else put enemy before ORDER
+    call debug(ORDER)
+# next I = 0; I < len(ORDER); endnext
+    # fight
+        "You chose to fight the goblin!"
+        jump next
+    # run
+        "You chose to run away from the goblin!"
+        jump end
+    # enemy
+        "The goblin attacks you!"
+        jump next
+#endnext
+  jump loop
+# failed_input
+  write "Invalid command. Please try again."
+  jump loop
+# you_win
+  "The goblin has been defeated!"
+  jump end
+# you_lose
+  "You have been defeated by the goblin!"
+  jump end
+# end
+  call exit()

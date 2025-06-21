@@ -1,17 +1,21 @@
 set item to "None"
 const ITEMS = [ "a", "b", "c", "d", "e" ]
-# foreach item in ITEMS; endforeach
-  call debug(item)
-# endforeach or foreach
+foreach item in ITEMS
+  set A to True
 
-call debug("Nope!") if False
-else call debug("Yep!")
+  if item is "a"
+    call debug("Nope!")
+  else if item is "b"
+    call debug("Yep!")
+  else
+    call debug("Yoooo!")
+  endif
+endfor
 
 set a, b to 0, 1
 call debug(a)
 call debug(b)
 
-# for i = 0; i < len(ITEMS); endfor
+for i = 0; i < len(ITEMS); inc i
   call debug(i from ITEMS)
-  inc i
-# endfor or for
+endfor

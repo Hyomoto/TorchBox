@@ -95,11 +95,11 @@ class Crucible(Serializer):
         crucible.variables = deserialize(data["variables"], classes)
         return crucible
 
-    def update(self, source: Dict[str, Any], constants: Optional[list] = None):
+    def update(self, source: Dict[str, Any], constants: bool = False) -> "Crucible":
         """Update the crucible with a dictionary of variables."""
         self.variables.update(source)
         if constants:
-            self.constants.extend(constants)
+            self.constants.extend([k for k in source.keys()])
         return self
 
     def set(self, var: str, value):

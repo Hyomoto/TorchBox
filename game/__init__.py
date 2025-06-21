@@ -1,6 +1,6 @@
 from typing import Dict, List, Tuple, Callable, Optional
 from torchbox import TorchBox, Ember, ConnectionHandler, SocketHandler, Shutdown
-from torchbox.realm import Realm, User
+from torchbox.realm import Realm, User, RealmSaveError, RealmLoadError
 from firestarter import FirestarterError
 from tinder import Tinderstarter, Tinder, Kindling, TinderBurn
 from tinder import Imported, Yielded, Halted
@@ -36,8 +36,8 @@ class Scene(Tinder, PermissionHolder):
     def __init__(self, instructions: List[Tuple[int, Kindling]], permissions: Optional[List[str]] = None):
         super().__init__(instructions=instructions, permissions=permissions)
     def __repr__(self):
-        list = '\n\t'.join(repr(inst) for inst in self.instructions)
-        return f"Scene[lines={len(self)}, permissions={self.permissions}](\n\t{list}\n)"
+        text = super().__repr__().replace("Tinder", "Scene")
+        return text
 
 def get_scripts(path: str = ""):
     path = "./game/scripts/" + path
@@ -60,7 +60,7 @@ class SocketUser(SocketHandler):
     def __init__(self, client: socket.socket, queue: queue.Queue, logger: Optional[Callable] = None):
         super().__init__(client, queue, logger)
         env = Crucible(NO_SHADOWING).update(copy.copy(userMemory))
-        env["STACK"].append((0, "login", None))  # Initialize with a login scene
+        env["STACK"].append(("login", None))  # Initialize with a login scene
         self.environment = env
 
 class Game(TorchBox):
@@ -75,7 +75,21 @@ class Game(TorchBox):
         self.running = True
         self.debug = False
 
+    def new_scope(self, scene: str, user: Crucible) -> Tuple[str, Crucible]:
+        local = Crucible(NO_SHADOWING, parent=user) # initialize new local scope
+        script = self.get(scene)
+        if not script:
+            raise TinderBurn(f"Scene '{scene}' not found.")
+        script.writeJumpTable(local)
+        return (scene, local)
+
     def run(self):
+        def save_complete(error: Exception | None = None):
+            if error:
+                self.log(Warning(f"{error}"))
+            else:
+                self.log(Info("Realm saved successfully.", "💾"))
+        
         def gameLoop():
             def scriptLoop(scene: str, script: Scene, user: Crucible, local: Crucible):
                 """
@@ -86,9 +100,11 @@ class Game(TorchBox):
                     try:
                         script.run(local)
                     except Imported as e:
-                        if e.library not in self.libraries:
-                            raise TinderBurn(f"Library '{e.library}' not found.")
+                        if not self.libraries:
+                            raise TinderBurn("No libraries loaded.")
                         lib = self.libraries.get(e.library)
+                        if lib == None:
+                            raise TinderBurn(f"Library '{e.library}' not found.")
                         if not lib.hasPermission(script):
                             raise TinderBurn(f"Library '{e.library}' cannot be imported in this context.")
                         if e.request:
@@ -122,15 +138,9 @@ class Game(TorchBox):
 
                     while True:
                         if stack[-1][1] is None:
-                            # If the scope is not set, we need to set it up
-                            scene = stack[-1][0]
-                            script = self.get(scene)
-                            if not script:
-                                raise TinderBurn(f"Scene '{scene}' not found.")
-                            local = Crucible(NO_SHADOWING, parent=user) # initialize new local scope
-                            user["STACK"] = [(scene, local)]
-                            stack = user["STACK"]
-                            script.writeJumpTable(local)
+                            new = self.new_scope(stack[-1][0], user)
+                            stack = [new]
+                            user["STACK"] = stack
                         
                         depth = len(stack) - 1
                         script, local = stack[-1]
@@ -200,7 +210,7 @@ class Game(TorchBox):
             self.log(Critical("Unhandled exception, shutting down server."))
             self.log(Critical(f"{e.__class__.__name__}: {e}"))
         finally:
-            self.realm.save(SAVE_FILE)
+            self.realm.save(SAVE_FILE, callback=save_complete)
             self.logger.write(clear=True)
 
     def getHandler(self, client, of: str) -> ConnectionHandler:

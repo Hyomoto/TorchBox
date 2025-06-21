@@ -11,12 +11,17 @@ from text import column
   "  (F,M,V,Q)"
 # get_input
   input "`3Your command, `11[[USER.nickname]]`3? "
-  jump @INPUT from batch("f.ind", "v.iew", "q.uit", "_failed_input")
+  jump @INPUT from batch("f.ind", "v.iew", "m.arket.place", "q.uit", "_failed_input")
 # failed_input
   write "Invalid command. Please try again."
   jump get_input
 # view
   call enter("user/status")
-# find or start
+  jump start
+# marketplace
+  call scene("marketplace/marketplace")
+# find
+  call enter("battle/start")
+  jump start
 # quit
   stop
