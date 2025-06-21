@@ -2,11 +2,11 @@
 
 # Tinder <small>2.0</small>
 
-> Tinder is a minimalist scripting language builder for deterministic, extensible logic in interactive scenes or nodes for Python applications.
+> Tinder is a minimalist scripting language for building interactive logic, scenes, and event-driven flows in Python applications.
 
-- PEG-based syntax.
-- Dynamic registration of commands and support for default arguments.
-- Arbitrary application state via the Crucible class.
+- Clear PEG-based syntax: Easy to read, easy to parse, and simple to extend.
+- Supports structured and unstructured logic: Use blocks (if, for, foreach) or explicit jumps and labels.
+- Ideal for games, dialogue engines, and narrative scripting: Designed for clarity, determinism, and control.
 
 [GitHub](https://github.com/Hyomoto/TorchBox)
 [Language](language/overview.md)

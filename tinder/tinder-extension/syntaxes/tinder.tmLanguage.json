@@ -7,7 +7,7 @@
     },
     {
       "name": "keyword.control",
-      "match": "^\\s*(catch|write|from|import|input|set|const|call|jump|return|stop|yield|inc|dec)\\b"
+      "match": "^\\s*(catch|write|from|import|input|set|const|call|jump|return|stop|yield|inc|dec|for|foreach|endif|endfor|if|else|put)\\b"
     },
     {
       "name": "variable.other.constant",
@@ -15,7 +15,7 @@
     },
     {
       "name": "support.function",
-      "match": "\\b(?:and|or|not|if|in|is|to|from|at|else|import)\\b"
+      "match": "\\b(?:and|or|not|if|in|is|to|from|at|import|before|after)\\b"
     },
     {
       "name": "invalid.illegal",

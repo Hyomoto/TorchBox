@@ -82,7 +82,8 @@ call foo()
 set result to math.add(1, 2)
 ```
 
-Functions are **not** declared inside scripts; they are made available via the engine, standard library, or imports. See [TODO](/#) for function reference.
+Functions are **not** declared inside scripts; they are made available via the engine, standard library, or imports.
+See [TODO](/#) for function reference.
 
 ---
 
@@ -102,29 +103,24 @@ Operators in Tinder follow a defined precedence order, affecting how expressions
 
 ---
 
-## Engine Functions and In-Script "Functions"
+## Engine Functions and In-Script Logic
 
-As Tinder is blockless, it does not allow for user-defined function declarations in scripts. Instead, functions are typically provided by the engine, standard library, or via `import`.
+Functions in Tinder scripts are provided by the engine, standard library, or imports; scripts do not declare functions directly.
 
 * You call them with `call foo()` or as part of an expression.
 
-However, Tinder’s `jump` and `return` keywords allow for structured, function-like logic using labels:
+For advanced control flow, Tinder’s `jump` and `return` can be used with labels to create reusable logic segments within a script:
 
 ```tinder
-  set a to 0
-# func else start
+set a to 0
+#func else start
   inc a
   return
-# start
+#start
   jump end if a == 5
   jump func
-# end else start
+#end else start
 ```
 
-?> While this pattern can mimic function calls, it requires careful flow control and label use. For details, see [Statements](language/basics.md#statements) and [Control Flow](language/keywords#control-flow).
-
----
-
-**Summary:**
-Tinder provides simple, expressive data types and a predictable set of access patterns.
-Dot notation and membership operators let you retrieve and manipulate values with minimal syntax, while operator precedence ensures expressions work as expected. Functions are engine-level features, but with control flow tricks, you can mimic structured logic as needed.
+?> While this pattern can mimic function calls, block constructs (`for`, `foreach`, `if`, etc.) are preferred for most logic.
+See [Statements](language/basics.md#statements) and [Control Flow](language/keywords#control-flow) for more on block structures.

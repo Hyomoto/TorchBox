@@ -1,12 +1,12 @@
-Line         -> ( Rule / Newline ) Comment?
+Line         -> ( Rule / Newline / Comment ) Comment?
 Newline      -- ~'\n|\r\n|\r' # newline
-Comment      -- "#" ~'[^\n]*'
+Comment      -- "//" ~'[^\n]*'
 
-Rule         -> ( If / EndIf / EndFor / Foreach / Foriter / Condition / From / Import / Const / Interrupt / Goto / Else / Statement ) Newline
+Rule         -> ( If / EndIf / EndFor / Foreach / Foriter / Condition / From / Import / Const / Interrupt / Goto / Else / Statement ) Comment? Newline
 From         <- "from" Identifier "import" Identifier ( "," Identifier )*
 Import       <- "import" Identifier ( "as" Identifier )?
 Interrupt    <- "catch" String "at"? Identifier
-Goto         <- "$" Identifier ( "or" Identifier )?
+Goto         <- "#" Identifier ( "or" Identifier )?
 Foreach      <- "foreach" Identifier ( "," Identifier )? "in" Expression
 Foriter      <- "for" Identifier "=" Expression ";" Expression ";" Keyword
 Const        <- "const" Identifier ( "is" / "=" ) ( Expression )
@@ -63,7 +63,7 @@ RightAngleBracketEqual <- ">="
 [RightAngleBracket]    <- ws? ">" ws? / ws "greater than" ws
 [Times]      <- ws? "*" ws? / ws "times" ws
 [Slash]      <- ws? "/" ws?
-[SlashSlash] <- ws? "//" ws? / ws "div" ws
+[SlashSlash] <- ws "div" ws
 [Percent]    <- ws? "%" ws? / ws "mod" ws
 [Plus]       <- ws? "+" ws? / ws "plus" ws
 [Minus]      <- ws? "-" ws? / ws "minus" ws

@@ -1,10 +1,9 @@
 from text import column
-  const KEYS = keys(ITEMS)
-  const col = { pad: "  " }
-# for i = 0; i < len(KEYS); endfor
-  set a, b to i from KEYS, i + 1 from KEYS
-  write column(["(`06" + a + "`3)" + (a from ITEMS), "(`06" + b + "`3)" + (b from ITEMS) ], 40, col ) if b
-  write column(["(`06" + a + "`3)" + (a from ITEMS)], 40, col ) if not b
-  inc i 2
-# endfor or for
-  call exit()
+    const KEYS = keys(ITEMS)
+    const col = { pad: "  " }
+    for i = 0; i < len(KEYS); inc i 2
+        set a, b to i from KEYS, i + 1 from KEYS
+        write column(["(`06" + a + "`3)" + (a from ITEMS), "(`06" + b + "`3)" + (b from ITEMS) ], 40, col ) if b
+        write column(["(`06" + a + "`3)" + (a from ITEMS)], 40, col ) if not b
+    endfor
+    call exit()

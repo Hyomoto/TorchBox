@@ -62,7 +62,6 @@ class BaseLibrary(Library):
         user = env.parent # grab user scope
         stack: list = user["STACK"]
         stack.pop()
-        print(user)
         raise Yielded(carry=carry)  # Yield to allow the game loop to continue
 
     @static_eval_safe 

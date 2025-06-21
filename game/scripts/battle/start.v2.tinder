@@ -13,20 +13,22 @@ import random
     call debug(INPUT)
     jump failed_input if INPUT is "failed_input"
     set ORDER to [ @INPUT ]
-    put enemy after ORDER if random.choice([True, False]) `` 50% chance to attack first
-    else put enemy before ORDER
+    if random.choice([True, False]) // 50% chance to attack first
+      put enemy after ORDER 
+    else
+      put enemy before ORDER
+    endif
     call debug(ORDER)
-# next I = 0; I < len(ORDER); endnext
-    # fight
-        "You chose to fight the goblin!"
-        jump next
-    # run
-        "You chose to run away from the goblin!"
-        jump end
-    # enemy
-        "The goblin attacks you!"
-        jump next
-#endnext
+    for I = 0; I < len(ORDER); inc I
+        if I from ORDER is "fight"
+            "You chose to fight the goblin!"
+        else if I from ORDER is "run"
+            "You chose to run away from the goblin!"
+            jump end
+        else if I from ORDER is "enemy"
+            "The goblin attacks you!"
+        endif
+    endfor
   jump loop
 # failed_input
   write "Invalid command. Please try again."

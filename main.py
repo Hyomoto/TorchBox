@@ -60,4 +60,4 @@ def main():
     print(RESET)
 
 if __name__ == "__main__":
-    test_compile()
+    debug()

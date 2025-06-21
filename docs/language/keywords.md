@@ -98,81 +98,83 @@ jump retry
 
 ---
 
-#### Foriter Labels
+#### For Blocks
 
-A **foriter label** provides a simple way to write C-style for-loops using labels. Syntax:
+Tinder supports C-style **for** loops as structured blocks, using the `for ... endfor` syntax.
 
-```tinder
-#for i = 0; i < 5; endfor
-```
-
-This expands to:
+**Syntax:**
 
 ```tinder
-set i to 0
-#for
-jump endfor if not i < 5
+for i = 0; i < 5; inc i
+  call debug(i)
+endfor
 ```
 
-* Initialize the loop variable.
-* Label marks loop start.
-* Conditional jump checks the loop condition.
+* The first part (`i = 0`) is the initializer (must be a single assignment).
+* The second part (`i < 5`) is the loop condition (checked before each iteration).
+* The third part (`inc i`) is any valid statement (executed after each iteration).
+* All statements inside the block will run in order until the condition fails.
 
-Use a matching label (`#endfor`) as your loop exit.
+**Note:**
+The entire loop—including condition checks and updates—is handled automatically. You do not need to use labels for most loops, but labels remain available for advanced/manual flow.
 
 ---
 
-#### Foreach Labels
+#### Foreach Blocks
 
-A **foreach label** makes iterating over arrays or tables easier, auto-assigning variables to each item or key/value pair.
+A **foreach** block lets you iterate over arrays or tables directly, with easy variable assignment.
 
 **Arrays:**
 
 ```tinder
-#foreach item in ITEMS; enditems
+foreach item in ITEMS
+  call debug(item)
+endfor
 ```
-
-Desugars to:
-
-* Sets up iteration over `ITEMS`
-* Assigns each value to `item` in turn
-* Jumps to `enditems` when done
 
 **Tables:**
 
 ```tinder
-#foreach key, value in MAP; endmap
+foreach key, value in MAP
+  call debug(key)
+  call debug(value)
+endfor
 ```
 
-Desugars to:
-
-* Assigns key and value for each entry in `MAP`
-* Jumps to `endmap` when done
+* In arrays, `item` is set to each element in turn.
+* In tables, `key` and `value` are set to each entry in the table.
 
 ?> **Note:**
-Tinder automatically handles the setup, index/key extraction, and loop control—making iteration easy and readable.
-
-## Statement Keywords
-
-Statement keywords are the heart of Tinder’s scripting logic. Each statement begins with a keyword that tells the interpreter what to do—assign variables, control flow, perform I/O, or interact with APIs. Statements can be made conditional with an `if <expression>` clause at the end of the line.
+Tinder handles setup, iteration, and index/key extraction. Just provide the variables and collection—no extra boilerplate required.
 
 ---
 
-### Else
+## Statement Keywords
 
-`else` allows you to specify an alternate action if the *last* evaluated condition was false.
+Statement keywords are the heart of Tinder’s scripting logic. Each statement begins with a keyword—assign variables, control flow, perform I/O, or call libraries.
+Statements can be single lines, or part of structured blocks (like `if ... endif`, `for ... endfor`, or `foreach ... endfor`).
+Statements can be made conditional with an `if <expression>` clause at the end of the line.
+
+---
+
+### If/Else/Else If Blocks
+
+Conditional logic in Tinder uses block syntax:
 
 ```tinder
-write "Hello there!" if JUST_ENTERED
-else write "Anything else?"
+if condition
+  write "Condition met"
+else if other_condition
+  write "Other branch"
+else
+  write "Fallback branch"
+endif
 ```
 
-!> **Note:**
-Because Tinder is blockless, `else` always refers to the last evaluated condition—even if there are unrelated lines in between.
-It does **not** create a block or require direct adjacency. Be careful to keep your conditional logic clear and well-organized.
-
-**In short:**
-`else` is a flat-language shorthand for fallback actions after a failed condition. It helps avoid writing multiple conditionals, but always remember: it doesn’t group statements the way structured languages do.
+* Use `if` to start a condition block.
+* Optionally use one or more `else if` or a single `else` for branching.
+* Always end with `endif`.
+* Only the first true branch runs; nesting is allowed.
 
 ---
 

@@ -217,7 +217,6 @@ class Firestarter:
             raise FirestarterError(f"Failed to parse tokens: {e}")
         if not ast:
             raise FirestarterError("No valid AST generated from tokens.")
-        print(ast.pretty_print())
         return ast
 
     def compileAst(self, ast: AST, asType: type = list):

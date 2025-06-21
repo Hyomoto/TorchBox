@@ -1048,7 +1048,6 @@ class Tinderstarter(Firestarter):
             raise TinderBurn(f"Unsupported Tinder version: {version}. Available versions: {list(GRAMMARS.keys())}")
         self.grammar = GRAMMARS[version]
         script: Tinder = super().compile(source, self.script)
-        print(script)
         resolver.libs = self.libs
         crucible = Crucible().update(env)
         crucible.update(script.jumpTable, constants=True)
@@ -1093,7 +1092,6 @@ class TinderResolver:
     def _(self, node: Else):
         if not self.blocks or type(self.blocks[-1][0]) is not If:
             raise TinderBurn("Else without If block.")
-        print(self.blocks[-1][-2])
         self.blocks[-1][-2].operation = Jump(Constant(self.instruction - 1))
         self.blocks[-1].append(node)
         node.condition = self.resolve(node.condition)
@@ -1134,7 +1132,6 @@ class TinderResolver:
         for i, (line, instruction) in enumerate(node.instructions):
             self.instruction = i
             if isinstance(instruction, Kindling):
-                print(f"Resolving instruction {i} at line {line}: {instruction}")
                 node.instructions[i] = (line, self.resolve(instruction))
         return node
 

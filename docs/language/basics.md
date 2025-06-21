@@ -43,45 +43,70 @@ import login
   set USER to login.find_user(input)
   call exit({LOGIN: "no_user"}) if not USER
 
-# get_password
-  input try
-  set SUCCESS to login.check_password(USER, INPUT)
+  for tries = 0; tries < 3; inc tries
+    input try
+    set SUCCESS to login.check_password(USER, INPUT)
 
-  call exit({LOGIN: "success"}) if SUCCESS
-  jump fail if tries is 0
-  set try to retry
-  dec tries
-  jump to get_password
+    if SUCCESS
+      call exit({LOGIN: "success"})
+    endif
 
-# fail
+  endfor
   call exit({LOGIN: "wrong_password"})
 ```
 
-!> **Tinder is unstructured and blockless:** All logic is explicit, using jumps and labels—no indentation or braces. This design is inspired by event-driven or scripting DSLs (like Yarn or assembly), favoring explicit, deterministic flow over traditional blocks.
+!> **Tinder supports both structured and unstructured flow:**  
+You can use blocks (like `if ... endif`, `foreach ... endfor`) for structured logic, or line labels and jumps for explicit, unstructured flow. Blocks do not create new scopes; all variables are accessible anywhere in the script, depending on Crucible implementation. Use whichever control style fits your needs.
 
----
+## Blocks
 
-## Statements
+Tinder supports two major block constructs: **if-blocks** and **for/foreach blocks**.
 
-A **statement** is a single instruction keyword followed by a expression pattern and optionally a condition.
+### If Blocks
 
-**Format:**
-
-```
-keyword expression (condition)
-```
-
-* **keyword:** Action to perform (`set`, `call`, etc.)
-* **expression:** Data or calculation (varies by keyword)
-* **condition:** (Optional) `if <expression>`. If omitted, statement always executes (as if `if True`).
-
-Example:
+Conditional blocks use `if`, optionally followed by `else if`, `else`, and always ending with `endif`. Only the first matching branch will execute.
 
 ```tinder
-set points to points + 10 if success
-```
+if condition
+  set result to "A"
+else if other_condition
+  set result to "B"
+else
+  set result to "C"
+endif
+````
 
-Statements may be made conditional (see [Conditions](#conditions)).
+You may nest if blocks as needed.
+
+### For/Foreach Blocks
+
+* **For:**
+  Follows the form `for <init>; <condition>; <statement>` and ends with `endfor`. The `<statement>` must be a valid statement (e.g., `inc i`).
+  Example:
+
+  ```tinder
+  for i = 0; i < 10; inc i
+    call debug(i)
+  endfor
+  ```
+* **Foreach:**
+  Iterates over arrays or tables.
+
+  ```tinder
+  foreach item in ITEMS
+    call debug(item)
+  endfor
+
+  foreach key, value in TABLE
+    call debug(key)
+    call debug(value)
+  endfor
+  ```
+
+  For arrays: `foreach a in arr`.
+  For tables: `foreach key, value in tbl`.
+
+**Note:** Blocks do not create new scopes. All variables remain in the same Crucible/environment.
 
 ---
 
