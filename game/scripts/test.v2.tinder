@@ -29,6 +29,10 @@ debug("set a, b from [ 1, 2 ] expect 1, 2")
 set a, b from [ 1, 2 ]
 debug(a)
 debug(b)
+debug("swap a, b expect 2, 1")
+swap a, b
+debug(a)
+debug(b)
 debug("set a, b, c from [ 0, 1 ] expect 0, 1, None")
 set a, b, c from [ 0, 1 ]
 debug(a)

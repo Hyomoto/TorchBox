@@ -7,7 +7,7 @@
     },
     {
       "name": "keyword.control",
-      "match": "^\\s*(catch|write|from|import|input|set|const|call|jump|return|stop|yield|inc|dec|for|foreach|endif|endfor|if|else|put|break|continue)\\b"
+      "match": "^\\s*(catch|write|from|import|input|set|swap|const|call|jump|return|stop|yield|inc|dec|for|foreach|endif|endfor|if|else|put|break|continue)\\b"
     },
     {
       "name": "variable.other.constant",

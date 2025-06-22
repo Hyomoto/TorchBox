@@ -3,6 +3,7 @@
   "displayName": "Tinder Syntax",
   "publisher" : "Hyomoto",
   "version": "0.0.2",
+  "icon": "tinder.png",
   "engines": {
     "vscode": "^1.50.0"
   },
