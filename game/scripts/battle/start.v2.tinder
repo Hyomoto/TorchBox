@@ -1,34 +1,35 @@
 import random
-    const cmd = batch("f.ight", "r.un", "_failed_input")
-    set PHP to USER.attributes.hp.current
-    set EHP to 10
+  const cmd = batch("f.ight", "r.un", "_failed_input")
+  set PHP to USER.attributes.hp.current
+  set EHP to 10
 # start
-    "`3You find a `11stray goblin`3 in the alleyway, looking for trouble."
-    "`3It looks like it wants to fight you!"
+  "`3You find a `11stray goblin`3 in the alleyway, looking for trouble."
+  "`3It looks like it wants to fight you!"
 # loop
-    "You have `11[[PHP]]`3 HP, and the goblin has `11[[EHP]]`3 HP."
-    input "`3What do you want to do? (F)ight or (R)un? "
-    set INPUT to INPUT from cmd
-    call debug(cmd)
-    call debug(INPUT)
-    jump failed_input if INPUT is "failed_input"
-    set ORDER to [ @INPUT ]
-    if random.choice([True, False]) // 50% chance to attack first
-      put enemy after ORDER 
-    else
-      put enemy before ORDER
-    endif
-    call debug(ORDER)
-    for I = 0; I < len(ORDER); inc I
-        if I from ORDER is "fight"
-            "You chose to fight the goblin!"
-        else if I from ORDER is "run"
-            "You chose to run away from the goblin!"
-            jump end
-        else if I from ORDER is "enemy"
-            "The goblin attacks you!"
-        endif
-    endfor
+  "You have `11[[PHP]]`3 HP, and the goblin has `11[[EHP]]`3 HP."
+  input "`3What do you want to do? (F)ight or (R)un? "
+  set INPUT to INPUT from cmd
+  jump failed_input if INPUT is "failed_input"
+  set ORDER to [ INPUT ]
+  if random.choice([True, False]) // 50% chance to attack first
+    put "enemy" after ORDER
+    "You go first!"
+  else
+    put "enemy" before ORDER
+    "The goblin goes first!"
+  endif
+  foreach action in ORDER
+      if action is "run"
+        "You chose to run away from the goblin!"
+        jump end
+      else if action is "fight"
+        "You chose to fight the goblin!"
+        jump do_fight
+      else if action is "enemy"
+        "The goblin attacks you!"
+        jump do_fight
+      endif
+  endfor
   jump loop
 # failed_input
   write "Invalid command. Please try again."
@@ -40,4 +41,8 @@ import random
   "You have been defeated by the goblin!"
   jump end
 # end
-  call exit()
+  call endsub()
+
+# do_fight
+  "Fight begins!"
+  return

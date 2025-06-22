@@ -9,7 +9,7 @@
     "\nWelcome, [[USER.nickname]]!\n"
     stop
 # no_user
-    set TEMP INPUT
+    set TEMP to INPUT
     input "`3I do not know you, stranger. Are you new here? [`1Y`3|`1N`3]: [`1Y`3]"
     set INPUT to INPUT or "y"
     jump new_user if INPUT in ["y"]

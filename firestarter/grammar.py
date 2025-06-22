@@ -795,6 +795,8 @@ def make_grammar(text: str, flags: int = Flags.NONE) -> Grammar:
 
     def visit_choice(node: Match, tokens: str) -> Rule:
         rules = [visit(child, tokens) for child in node.children]
+        if len(rules) == 1 and rules[0].identity == None:
+            return rules[0]
         return RuleChoice(*rules)
 
     def visit_sequence(node: Match, tokens: str) -> Rule:

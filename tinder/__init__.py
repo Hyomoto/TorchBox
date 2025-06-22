@@ -94,6 +94,7 @@ Author: Devon "Hyomoto" Mullane, 2025
 License: MIT License
 """
 from importlib.resources import files
+from turtle import left
 from typing import Tuple, Type, Dict, List, Optional, Any
 from .crucible import Crucible, CrucibleError, CrucibleValueNotFound
 from .library import Library
@@ -136,9 +137,7 @@ class Yielded(FlowControl):
     """
     Used by Tinders to yield control.
     """
-    def __init__(self, carry: Optional[Dict] = None):
-        if carry and not isinstance(carry, dict):
-            raise TinderBurn(f"Illegal yield with carry: expected dict, got '{type(carry).__name__}'.")
+    def __init__(self, carry: None):
         self.carry = carry
     def __str__(self):
         return f"Yielded(carry={self.carry})"
@@ -162,7 +161,7 @@ class Symbol(AbstractSymbol,ABC):
     def __init__(self):
         pass
     def __repr__(self):
-        return f"{self.__class__.__name__}()"
+        return f"<{self.__class__.__name__}>"
 
 class Bang(Symbol):
     pass
@@ -209,7 +208,7 @@ class After(Symbol):
 class In(Symbol):
     pass
 
-class At(Symbol):
+class Assign(Symbol):
     pass
 
 # abstract base class
@@ -316,6 +315,8 @@ class Array(Value):
             self.list[index] = value
         else:
             raise IndexError("Index out of range for Array.")
+    def __iter__(self):
+        return iter(self.list)
     def __contains__(self, item: Any):
         return item in self.list
     def __len__(self):
@@ -344,6 +345,12 @@ class Table(Value):
         return Table
     def transmute(self, env: Crucible):
         return {key: value.transmute(env) for key, value in self.table.items()}
+    def keys(self):
+        return list(self.table.keys())
+    def values(self):
+        return list(self.table.values())
+    def items(self):
+        return [(key, value) for key, value in self.table.items()]
     def __getitem__(self, key: str):
         if key in self.table:
             return self.table[key]
@@ -354,6 +361,8 @@ class Table(Value):
         self.table[key] = value
     def __contains__(self, key: str):
         return key in self.table
+    def __iter__(self):
+        return iter(self.table.items())
     def __len__(self):
         return len(self.table)
     def __repr__(self):
@@ -615,27 +624,6 @@ class ValueIn(AbstractBinary):
     def __repr__(self):
         return super().__repr__().replace("%s", "in")
 
-class ValueAt(AbstractBinary):
-    """Returns the value at the index specified by the left operand in the right operand."""
-    def __init__(self, left: Kindling, right: Kindling ):
-        super().__init__(left, right)
-    def transmute(self, env):
-        right = self.right.transmute(env)
-        left = self.left.transmute(env)
-        if isinstance(right, list):
-            if isinstance(left, (int, float)):
-                value = right[int(left)]
-                return value.transmute(env) if value else None
-            raise TinderBurn(f"Left operand must be an integer index, got {type(left).__name__}.")
-        if isinstance(right, dict):
-            if isinstance(left, str):
-                value = right[left]
-                return value.transmute(env) if value else None
-            raise TinderBurn(f"Left operand must be a string key, got {type(left).__name__}.")
-        raise TinderBurn(f"Right operand must be an Array or Table, got {type(right).__name__}.")
-    def __repr__(self):
-        return super().__repr__().replace("%s", "at")
-
 # statements
 
 class Condition(Kindling):
@@ -723,26 +711,71 @@ class Put(Keyword):
 
 class Inc(AbstractSymbol):
     def __init__(self, identifier: Identifier, expression: Optional[Kindling] = None):
-        raise SymbolReplace(Set(identifier, Add(identifier, expression or Number("1"))))
+        raise SymbolReplace(Set(identifier, Assign(), Add(identifier, expression or Number("1"))))
 
 class Dec(AbstractSymbol):
     def __init__(self, identifier: Identifier, expression: Optional[Kindling] = None):
-        raise SymbolReplace(Set(identifier, Subtract(identifier, expression or Number("1"))))
+        raise SymbolReplace(Set(identifier, Assign(), Subtract(identifier, expression or Number("1"))))
 
 class Set(Keyword):
     """Sets a variable in the environment."""
-    def __init__(self, *terms: Kindling):
-        if len(terms) % 2 != 0:
-            raise TinderBurn("Set requires an even number of terms (identifier, value pairs).")
-        keys = [key.value for key in terms[:len(terms) // 2]]
-        values = terms[len(terms) // 2:]
-        self.pairs: List[Tuple[Identifier, Kindling]] = list(zip(keys, values))
+    def __init__(self, *terms: AbstractSymbol):
+        self.assign = None
+        for i, term in enumerate(terms):
+            if isinstance(term, (Assign, FromSymbol )):
+                self.assign = term
+                keys = terms[:i]
+                values = list(terms[i + 1:])
+                break
+        
+        if self.assign is None:
+            keys = list(terms)
+            values = [None] * len(keys)
+            self.assign = Assign()
+        
+        for term in keys:
+            if not isinstance(term, Identifier):
+                raise TinderBurn(f"Left-hand side of assignment must be an identifier, got {type(term).__name__}.")
+        keys = [key.value for key in keys]
+
+        if isinstance(self.assign, Assign):
+            if len(values) < len(keys):
+                values.extend([values[-1]] * (len(keys) - len(values)))
+            
+            if len(keys) != len(values):
+                raise TinderBurn("Set requires an even number of terms (identifier, value pairs).")
+        
+            self.pairs: List = list(zip(keys, values))
+        else:
+            if len(keys) == 0 or len(values) == 0:
+                raise TinderBurn("Set from requires at least one identifier and one value.")
+            keys.append(values[0])
+            self.pairs: List = keys
+
     def transmute(self, env: Crucible):
-        for identifier, value in self.pairs:
-            value = value.transmute(env) if value else None
-            env.set(identifier, value)
+        if isinstance(self.assign, Assign):
+            for identifier, value in self.pairs:
+                value = value.transmute(env) if value else None
+                env.set(identifier, value)
+        else:
+            values = self.pairs[-1].transmute(env)
+            keys = self.pairs[:-1]
+            if isinstance(values, dict):
+                for key in keys:
+                    if key not in values:
+                        env.set(key, None)
+                    else:
+                        env.set(key, values[key])
+            else:
+                for i, value in enumerate(values):
+                    if i >= len(keys):
+                        break
+                    env.set(keys[i], value)
+                for key in keys[i+1:]:
+                    env.set(key, None)
+
     def __repr__(self):
-        return f"Set(pairs={self.pairs})"
+        return f"Set(assign={self.assign}, pairs={self.pairs})"
 
 class Swap(Keyword):
     """Swaps the values of two variables in the environment."""
@@ -760,71 +793,13 @@ class Swap(Keyword):
 class Const(Set):
     """Flags a variable as a const in the environment for the resolver."""
     def __init__(self, identifier: Identifier, value: Kindling ):
-        super().__init__(identifier, value)
+        super().__init__(identifier, Assign(), value)
     def transmute(self, env):
         super().transmute(env)
         for key, _ in self.pairs:
             env.constants.append(key)
     def __repr__(self):
         return f"Const(pairs={self.pairs})"
-
-# loop sugar
-
-class Foreach(Statement):
-    """
-    Provides sugar for looping over a list or table.
-    # goto a (, b) in c; d
-    """
-    def __init__(self, *identifier: Identifier ):
-        is_dict = len(identifier) == 4
-        values = [identifier[0], identifier[1]] if is_dict else [identifier[0]]
-        iterable = identifier[2] if is_dict else identifier[1]
-        super().__init__(None, Condition(Equal(Identifier("__INDEX__"), Identifier("__LENGTH__"))))
-        output = [
-            Set(Identifier("__ITER__"), iterable),
-            Set(Identifier("__INDEX__"), Number("0")),
-            Set(Identifier("__LENGTH__"), Function(Identifier("len"), iterable)),
-            self,
-        ]
-        if len(values) == 1:
-            output.append(Set(values[0], ValueFrom(Identifier("__INDEX__"), Identifier("__ITER__"))))
-        else:
-            output.append(Set(values[0], ValueAt(Identifier("__INDEX__"), Identifier("__ITER__"))))
-            output.append(Set(values[1], ValueFrom(values[0], Identifier("__ITER__"))))
-        output.append(Set(Identifier("__INDEX__"), Add(Identifier("__INDEX__"), Number("1"))))
-        raise SymbolReplace(output)
-    def __repr__(self):
-        return f"Foreach(operation={self.operation}, condition={self.condition})"
-
-class Foriter(Statement):
-    """
-    Provides sugar for looping over a list or table.
-    # goto a = 0; a < len(b); inc a
-    """
-    def __init__(self, identifier: Identifier, value: Kindling, condition: Kindling, operation: Kindling):
-        super().__init__(None, Not(condition))
-        output = [
-            Set(identifier, value),
-            JumpAhead(1), # bypass the first operation
-            operation,
-            self,
-        ]
-        raise SymbolReplace(output)
-    def __repr__(self):
-        return f"Foriter(operation={self.operation}, condition={self.condition})"
-
-class EndFor(NoOp):
-    """
-    Marks the end of a for loop block. These need to be resolved by the resolver. These should
-    never be run, but they are a form of NoOp in the event that the script is compiled, but not resolved.
-    """
-    def __init__(self):
-        raise SymbolReplace([
-            Jump(None),
-            self,
-        ])
-    def __repr__(self):
-        return "EndFor()"
 
 # control flow
 
@@ -867,7 +842,7 @@ class Return(Keyword):
         pass
     def transmute(self, env: Crucible):
         try:
-            env.set("__JUMPED__", env.get("__LINE__"))
+            env.set("__LINE__", env.get("__JUMPED__"))
         except CrucibleError:
             raise TinderBurn(f"No return target found in environment.")
     def __repr__(self):
@@ -875,7 +850,7 @@ class Return(Keyword):
 
 class Goto(Keyword):
     """A no-operation instruction used to flag line numbers by name."""
-    def __init__(self, identifier: Identifier | String, otherwise: Optional[Identifier | Foreach | Foriter] = None):
+    def __init__(self, identifier: Identifier | String, otherwise: "Optional[Identifier | Foreach | Foriter]" = None):
         self.identifier: str = identifier.value
         self.otherwise = Jump(otherwise) if otherwise else None
     def transmute(self, env: Crucible):
@@ -908,6 +883,103 @@ class Yield(Keyword):
         raise Yielded(carry=output)
     def __repr__(self) -> str:
         return f"Yield(callout={self.callout})"
+
+# loop sugar
+
+class Iterable(Kindling):
+    """A kindling that represents an iterable object."""
+    def __init__(self, iterable: Kindling):
+        self.iterable = iterable
+    def transmute(self, env: Crucible):
+        iter = self.iterable.transmute(env)
+        if not isinstance(iter, (list, dict)):
+            raise TinderBurn(f"Iterable must be a list or table, got {type(iter).__name__}.")
+        if isinstance(iter, dict):
+            return list(iter.keys())
+        else:
+            return list(range(len(iter)))
+    def __repr__(self):
+        return f"Iterable(iterable={self.iterable})"
+
+class Foreach(Statement):
+    """
+    Provides sugar for looping over a list or table.
+    for a, b in c
+    """
+    def __init__(self, *identifier: Identifier ):
+        is_dict = len(identifier) == 3
+        values = [identifier[0], identifier[1]] if is_dict else [identifier[0]]
+        iterable = Iterable(identifier[2] if is_dict else identifier[1])
+        super().__init__(None, Condition(Equal(Identifier("__INDEX__"), Identifier("__LENGTH__"))))
+        output = [
+            Set(Identifier("__ITER__"), Assign(), iterable),
+            Set(Identifier("__INDEX__"), Assign(),Number("0")),
+            Set(Identifier("__LENGTH__"), Assign(), Function(Identifier("len"), iterable)),
+            self,
+        ]
+        if len(values) == 1:
+            output.append(Set(values[0], Assign(), ValueFrom(Identifier("__INDEX__"), identifier[1])))
+        else:
+            output.append(Set(values[0], Assign(), ValueFrom(Identifier("__INDEX__"), Identifier("__ITER__"))))
+            output.append(Set(values[1], Assign(), ValueFrom(values[0], identifier[2])))
+        output.append(Set(Identifier("__INDEX__"), Assign(), Add(Identifier("__INDEX__"), Number("1"))))
+        raise SymbolReplace(output)
+    def __repr__(self):
+        return f"Foreach(operation={self.operation}, condition={self.condition})"
+
+class Foriter(Statement):
+    """
+    Provides sugar for looping over a list or table.
+    for a = 0; a < len(b); inc a
+    """
+    def __init__(self, identifier: Identifier, value: Kindling, condition: Kindling, operation: Kindling):
+        super().__init__(None, Not(condition))
+        output = [
+            Set(identifier, Assign(), value),
+            JumpAhead(1), # bypass the first operation
+            operation,
+            self,
+        ]
+        raise SymbolReplace(output)
+    def __repr__(self):
+        return f"Foriter(operation={self.operation}, condition={self.condition})"
+
+class Forwhile(Statement):
+    """
+    Provides sugar for looping over a list or table.
+    for a < 10
+    """
+    def __init__(self, condition: Kindling):
+        super().__init__(None, Not(condition))
+    def __repr__(self):
+        return f"Forwhile(operation={self.operation}, condition={self.condition})"
+
+class Continue(Jump):
+    """Continues to the next iteration of a loop."""
+    def __init__(self):
+        pass
+    def __repr__(self):
+        return f"Continue({self.identifier})"
+    
+class Break(Jump):
+    """Breaks out of the current loop."""
+    def __init__(self):
+        pass
+    def __repr__(self):
+        return f"Break({self.identifier})"
+
+class EndFor(NoOp):
+    """
+    Marks the end of a for loop block. These need to be resolved by the resolver. These should
+    never be run, but they are a form of NoOp in the event that the script is compiled, but not resolved.
+    """
+    def __init__(self):
+        raise SymbolReplace([
+            Jump(None),
+            self,
+        ])
+    def __repr__(self):
+        return "EndFor()"
 
 # io
 
@@ -1055,7 +1127,6 @@ class Tinderstarter(Firestarter):
         script = resolver.resolve(script)
         return script
 
-
 # Resolver
 
 class TinderResolver:
@@ -1083,7 +1154,7 @@ class TinderResolver:
         return node
     
     @resolve.register
-    def _(self, node: Foreach | Foriter):
+    def _(self, node: Foreach | Foriter | Forwhile ):
         self.blocks.append([node, self.instruction])
         node.condition = self.resolve(node.condition)
         return node
@@ -1110,13 +1181,31 @@ class TinderResolver:
     
     @resolve.register
     def _(self, node: EndFor):
-        if not self.blocks or (type(self.blocks[-1][0]) is not Foriter and type(self.blocks[-1][0]) is not Foreach):
+        if not self.blocks or (type(self.blocks[-1][0]) not in (Foreach, Foriter, Forwhile)):
             raise TinderBurn("EndFor without For block.")
+        iter = type(self.blocks[-1][0]) is Foriter
         block = self.blocks.pop()
         jump = block.pop()
-        jump.identifier = Constant(block.pop() - 2 )
-        block[-1].operation = Jump(Constant(self.instruction - 1))
+        contline = Constant(block[1] - (2 if iter else 1))
+        breakline = Constant(self.instruction - 1)
+        block[0].operation = Jump(breakline)
+        jump.identifier = contline
+        for statement in block[2:]:
+            if isinstance(statement, Continue):
+                statement.identifier = contline
+            elif isinstance(statement, Break):
+                statement.identifier = breakline
         return node
+    
+    @resolve.register
+    def _(self, node: Continue | Break):
+        if not self.blocks:
+            raise TinderBurn(f"{node.__class__.__name__} without a loop block.")
+        for block in reversed(self.blocks):
+            if isinstance(block[0], (Foreach, Foriter, Forwhile)):
+                block.append(node)
+                return node
+        raise TinderBurn(f"{node.__class__.__name__} without a loop block.")
     
     @resolve.register
     def _(self, node: Jump):
@@ -1151,6 +1240,7 @@ class TinderResolver:
 
     @resolve.register
     def _(self, node: Condition):
+        self.resolveChildren(node)
         return node
 
     @resolve.register
@@ -1173,12 +1263,26 @@ class TinderResolver:
 
     @resolve.register
     def _(self, node: Set | Const):
-        for i, (key, value) in enumerate(node.pairs):
+        if isinstance(node.assign, Assign):
+            for i, (key, value) in enumerate(node.pairs):
+                try:
+                    node.pairs[i] = (key, self.resolve(value))
+                    self.env.set(key, node.pairs[i][1].transmute(self.env))
+                    if isinstance(node, Const):
+                        self.env.constants.append(key)
+                except Exception:
+                    pass
+        else:
             try:
-                node.pairs[i] = (key, self.resolve(value))
-                self.env.set(key, node.pairs[i][1].transmute(self.env))
-                if isinstance(node, Const):
-                    self.env.constants.append(key)
+                values = self.resolve(node.pairs[-1])
+                node.pairs[-1] = values
+                keys = node.pairs[:-1]
+                for i, value in enumerate(values):
+                    if i >= len(keys):
+                        break
+                    self.env.set(keys[i], value)
+                    if isinstance(value, Const):
+                        self.env.constants.append(keys[i])
             except Exception:
                 pass
         return node
@@ -1192,6 +1296,13 @@ class TinderResolver:
             except Exception:
                 pass
         return node
+    
+    @resolve.register
+    def _(self, node: Iterable):
+        try:
+            return Constant(node.transmute(self.env))
+        except Exception:
+            return node
 
     @resolve.register
     def _(self, node: Constant):

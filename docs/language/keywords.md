@@ -1,37 +1,36 @@
 ## Directive Keywords
 
-**Directives** are special instructions that configure your script, import tools, or define constants and error handling. They always execute when encountered and are not conditional.
+**Directives** configure the script, import libraries, define constants, or set up error handling. Directives always execute when encountered and cannot be conditional.
 
 ---
 
-### Importing
+### Importing Libraries
 
 #### `import`
 
-Brings an external library as a set of functions, utilities, or constants—into your script’s namespace. After importing, you access its contents using dot notation.
+Imports a library and makes its functions, constants, and utilities available under a name in your script.
 
 ```tinder
 import math
 import text as txt
 ```
 
-* Use `as` to assign a custom name.
+* Use `as` to import the library under a custom name.
+* Access imported contents using dot notation: `math.sqrt(16)`
 
 ---
 
 #### `from`
 
-Imports specific functions or values from an API directly into your script’s local scope. This allows you to use them without a prefix.
+Imports specific symbols from a library directly into your script’s namespace, so you can use them without a prefix.
 
 ```tinder
 from math import sqrt, pow
 sqrt(25)
 ```
 
-* Imported items appear as if they were defined directly in your script.
-
-?> **Note:**
-`from` is best used when you need only a few symbols from a large library.
+* Only the listed functions/values are imported.
+* Good for when you only need a few symbols from a large library.
 
 ---
 
@@ -39,13 +38,13 @@ sqrt(25)
 
 #### `const`
 
-Declares a constant variable, which cannot be changed after its initial assignment.
+Defines a constant variable. Constants cannot be reassigned after their initial value.
 
 ```tinder
 const MAX_TRIES = 5
 ```
 
-* Attempting to assign a new value to a constant will raise an error.
+* Assigning a new value to a constant raises an error.
 
 ---
 
@@ -53,43 +52,35 @@ const MAX_TRIES = 5
 
 #### `catch`
 
-Sets up an error handler, letting your script respond to specific exceptions by jumping to a label when an error is raised.
+Defines a handler for a specific exception, so your script can recover or branch to a label if an error occurs.
 
 ```tinder
 catch "CrucibleValueNotFound" at handle_missing
 ```
 
-* Used for graceful error recovery.
-
----
-
-### Control Flow
+## Control Flow with Labels and Blocks
 
 #### Basic Labels
 
-A **label** defines a jump target for control flow. Use `# label` to mark a point in your script that other statements (such as `jump`) can refer to.
+Labels mark jump targets. Use `#label` to anchor a spot in your script for use with `jump`.
 
 ```tinder
 #retry
 #end
 ```
 
-?> **Tip:** Labels are the core building blocks of Tinder’s flat, explicit control flow.
-
 ---
 
 #### Or Labels
 
-You can define a label with an `or` clause to specify where control should go if this label is reached "naturally" (by falling through), rather than by a jump.
+Labels can include `or` to specify where to jump if the label is reached by falling through, not via `jump`.
 
 ```tinder
 #end or retry
 ```
 
-* If you `jump end`, execution continues at `#end` as normal.
-* If execution *falls through* to `#end`, it jumps instead to `retry`.
-
-**Equivalent sugar:**
+* If reached by fallthrough, execution jumps to `retry` instead.
+* Syntactic sugar for:
 
 ```tinder
 jump retry
@@ -100,66 +91,95 @@ jump retry
 
 #### For Blocks
 
-Tinder supports C-style **for** loops as structured blocks, using the `for ... endfor` syntax.
+Tinder supports structured for-loops in two forms: traditional C-style and simplified “while-style.”
 
-**Syntax:**
+**C-style For Loop:**
+Initializes, checks a condition, then executes a step each iteration.
 
 ```tinder
 for i = 0; i < 5; inc i
-  call debug(i)
+  debug(i)
 endfor
 ```
 
-* The first part (`i = 0`) is the initializer (must be a single assignment).
-* The second part (`i < 5`) is the loop condition (checked before each iteration).
-* The third part (`inc i`) is any valid statement (executed after each iteration).
-* All statements inside the block will run in order until the condition fails.
+* **Initialization** (`i = 0`): Sets up the loop variable, runs once at the start.
+* **Condition** (`i < 5`): Checked before every iteration.
+* **Step** (`inc i`): Runs after each iteration.
 
-**Note:**
-The entire loop—including condition checks and updates—is handled automatically. You do not need to use labels for most loops, but labels remain available for advanced/manual flow.
+**While-Style For Loop:**
+Acts like a `while` loop; only a condition is required. Any initialization or updates must be written inside the block.
+
+```tinder
+for i < 10
+  debug(i)
+  inc i
+endfor
+```
+
+* **Condition** (`i < 10`): Checked before every iteration.
+* **Initialization and updates** must be done inside the block.
+
+?> Use C-style form for loops with a clear start, stop, and step.
+Use while-style for simpler cases, or when you want manual control of variable updates.
 
 ---
 
 #### Foreach Blocks
 
-A **foreach** block lets you iterate over arrays or tables directly, with easy variable assignment.
+Iterates over arrays or tables, assigning variables to values or key/value pairs.
 
-**Arrays:**
+* **Single variable:** Iterate values.
+
+  ```tinder
+  foreach item in ITEMS
+    debug(item)
+  endfor
+  ```
+
+* **Two variables:** For arrays, iterates index and value. For tables, key and value.
+
+  ```tinder
+  foreach i, x in ITEMS
+    debug(i)
+    debug(x)
+  endfor
+  ```
+
+?> Use a single variable if you only care about the value. Add a second variable if you need the index (arrays) or key (tables).
+
+#### break and continue
+
+Inside a `for`, `foreach`, or `while-style` loop, use `break` to exit the current loop immediately, or `continue` to skip to the next iteration.
 
 ```tinder
-foreach item in ITEMS
-  call debug(item)
+for i < 10
+  if should_stop(i)
+    break
+  endif
+  if should_skip(i)
+    continue
+  endif
+  debug(i)
 endfor
 ```
 
-**Tables:**
+* Both support conditions:
+  `break if error`, `continue if x < 5`
 
-```tinder
-foreach key, value in MAP
-  call debug(key)
-  call debug(value)
-endfor
-```
+?> Note:
+break and continue always affect the innermost loop (the closest for, foreach, or while-style block). This matches behavior in most languages.
 
-* In arrays, `item` is set to each element in turn.
-* In tables, `key` and `value` are set to each entry in the table.
-
-?> **Note:**
-Tinder handles setup, iteration, and index/key extraction. Just provide the variables and collection—no extra boilerplate required.
-
----
+If you need to exit multiple levels (for example, breaking out of an outer loop from deep inside), use jump to a label after the desired loop. Be careful: jumping out of a loop block skips automatic iterator cleanup, which could cause unexpected results if not managed deliberately.
 
 ## Statement Keywords
 
-Statement keywords are the heart of Tinder’s scripting logic. Each statement begins with a keyword—assign variables, control flow, perform I/O, or call libraries.
-Statements can be single lines, or part of structured blocks (like `if ... endif`, `for ... endfor`, or `foreach ... endfor`).
-Statements can be made conditional with an `if <expression>` clause at the end of the line.
+Statements do the work in Tinder: variable assignment, mutation, control flow, input/output, and calling libraries.
+
+Statements can be single lines, or part of blocks (`if ... endif`, `for ... endfor`, `foreach ... endfor`). Most support a trailing `if <expression>` for conditional execution.
 
 ---
 
-### If/Else/Else If Blocks
-
-Conditional logic in Tinder uses block syntax:
+### Conditional Blocks
 
 ```tinder
 if condition
@@ -171,45 +191,72 @@ else
 endif
 ```
 
-* Use `if` to start a condition block.
-* Optionally use one or more `else if` or a single `else` for branching.
-* Always end with `endif`.
-* Only the first true branch runs; nesting is allowed.
+* `if` starts a block. Optionally chain `else if` and `else`.
+* End every conditional block with `endif`.
+* Only the first branch with a true condition is executed.
 
 ---
 
-### Assignment and Mutation
+### Assignment & Mutation
 
 #### `set`
 
-Assigns a value to a variable—or several at once. By separating identifiers and values with commas, you can batch assign multiple variables in one line.
+Assigns values to one or more variables. The assignment mode is determined by the presence of `to`, `from`, or omission of both.
+
+---
+
+**Basic Assignment:**
 
 ```tinder
-set x, y to 0, 0
-set user to input()
+set a, b          `` Sets both a and b to None
 ```
 
-#### `inc`
+---
 
-Increments a variable by 1 or a specified amount.
+**Direct Assignment (with `to`):**
+
+```tinder
+set a, b to 10, 15   `` a = 10, b = 15
+set x, y, z to 5, 10 `` x = 5, y = 10, z = 10 (last value repeats)
+set foo, bar to 42   `` foo = 42, bar = 42
+```
+
+* If there are more variables than values, the last value is repeated.
+* If there are more values than variables, extra values are ignored.
+
+---
+
+**Unpacking from Lists or Tables (with `from`):**
+
+```tinder
+set a, b from [0, 1]       `` a = 0, b = 1
+set k, v from {k: 7, v: 9} `` k = 7, v = 9
+set x, y, z from [1]       `` x = 1, y = None, z = None
+set a, b from {a: 2}       `` a = 2, b = None
+```
+
+* When unpacking, values are assigned left-to-right.
+* Fewer values than variables: remaining variables are set to `None`.
+* Fewer variables than values: only as many values as variables are assigned.
+* For tables: keys must match variable names to assign values; unmatched variables get `None`.
+
+---
+
+?> **Tip:**
+The `from` form is especially useful for unpacking lists or dicts (such as arguments or configuration) when scripts are initialized by the engine.
+
+#### `inc` / `dec`
+
+Increments or decrements a variable by 1 or a specified amount.
 
 ```tinder
 inc score
-inc tries 3
-```
-
-#### `dec`
-
-Decrements a variable by 1 or a specified amount.
-
-```tinder
-dec lives
-dec time 5
+dec lives 3
 ```
 
 #### `put`
 
-Places an item before or after an array.
+Inserts an item before or after a list.
 
 ```tinder
 put "this" before list
@@ -218,7 +265,7 @@ put "that" after list
 
 #### `swap`
 
-Swap two variable values.
+Swaps values between two variables.
 
 ```tinder
 swap a, b
@@ -230,16 +277,21 @@ swap a, b
 
 #### `write`
 
-Appends text (with a newline) to a variable, or outputs it directly.
+Outputs text to the default output or a variable.
 
 ```tinder
 write "Hello, world!" to output
-"Welcome!"   \`\` Implicit write to default output
+```
+
+?> If a line starts with a string, `write` is implied:
+
+```tinder
+"Welcome!"  `` Implicit write to default output
 ```
 
 #### `input`
 
-Prompts for user input, assigns result to a variable, and yields execution.
+Prompts for user input, stores the result, and yields.
 
 ```tinder
 input "Enter name:" to username
@@ -251,11 +303,17 @@ input "Enter name:" to username
 
 #### `call`
 
-Invokes a function or procedure from an API or variable.
+Calls a function from a library or variable.
 
 ```tinder
 call login.find_user(input)
 call battle.start()
+```
+
+?> If the line contains only a function call, `call` is implied:
+
+```tinder
+login.find_user(input)
 ```
 
 ---
@@ -271,7 +329,7 @@ jump to retry
 jump end if done
 ```
 
-?> **Tip** Using an indirect expression allows you to resolve from a value to a jump target.  See (indirect)[] for more information.
+?> You can use indirect expressions as jump targets for dynamic flow.
 
 #### `return`
 
@@ -283,7 +341,7 @@ return
 
 #### `yield`
 
-Suspends script execution, optionally returning a value to the engine.
+Pauses execution, optionally returning a value to the engine.
 
 ```tinder
 yield
@@ -292,7 +350,7 @@ yield "Waiting for input"
 
 #### `stop`
 
-Ends script execution immediately.
+Ends execution immediately.
 
 ```tinder
 stop
@@ -301,5 +359,5 @@ stop
 ---
 
 !> **Note:**
-Most statement keywords support `if <expression>` for conditional execution.
+Most statement keywords support trailing `if <expression>` for conditional execution.
 See [Conditions](language/basics.md#conditions) for details.

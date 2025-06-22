@@ -7,6 +7,7 @@ from tinder import Imported, Yielded, Halted
 from tinder.crucible import Crucible, PROTECTED, READ_ONLY, NO_SHADOWING
 from tinder.library import Library
 from torchbox.logger import Logger, Log, Critical, Warning, Info, Debug
+from mixins.serializer import Serializer
 from mixins.permissions import PermissionHolder
 from constants import RESET
 from .memory.protected import map as protectedMemory
@@ -32,12 +33,60 @@ def get_file(path: str):
     with open(path, "r") as f:
         return f.read()
 
-class Scene(Tinder, PermissionHolder):
+class Scene(Tinder, PermissionHolder, Serializer):
     def __init__(self, instructions: List[Tuple[int, Kindling]], permissions: Optional[List[str]] = None):
         super().__init__(instructions=instructions, permissions=permissions)
     def __repr__(self):
         text = super().__repr__().replace("Tinder", "Scene")
         return text
+    
+    def serialize(self) -> Dict[str, any]:
+        def serialize(obj):
+            # If already a dict (not an opcode), handle as plain data
+            if isinstance(obj, dict):
+                return {k: serialize(v) for k, v in obj.items()}
+            # If primitive
+            elif isinstance(obj, (str, int, float, bool, type(None))):
+                return obj
+            # If a list/tuple
+            elif isinstance(obj, (list, tuple)):
+                return [serialize(v) for v in obj]
+            # If it's an opcode class (anything else, assuming by convention)
+            else:
+                result = {"__op__": type(obj).__name__}
+                for k, v in vars(obj).items():  # vars() works for both __dict__ and __slots__
+                    if k.startswith("_"):
+                        continue
+                    result[k] = serialize(v)
+                return result
+        return {
+            "instructions": [serialize(instr) for instr in self.instructions],
+            "permissions": self.permissions or []
+        }      
+
+    @classmethod
+    def deserialize(cls, data: dict) -> Dict[str, any]:
+        def deserialize(data):
+            if isinstance(data, dict) and "__op__" in data:
+                op_name = data["__op__"]
+                cls = tinderstarter.opcodes[op_name]  # Or use a registry for safety
+                kwargs = {}
+                for k, v in data.items():
+                    if k == "__op__":
+                        continue
+                    kwargs[k] = deserialize(v)
+                return cls(**kwargs)
+            elif isinstance(data, dict):
+                return {k: deserialize(v) for k, v in data.items()}
+            elif isinstance(data, list):
+                return [deserialize(i) for i in data]
+            else:
+                return data
+        return cls(
+            instructions=deserialize(data.get("instructions", [])),
+            permissions=data.get("permissions", [])
+        )
+
 
 def get_scripts(path: str = ""):
     path = "./game/scripts/" + path
@@ -66,7 +115,7 @@ class SocketUser(SocketHandler):
 class Game(TorchBox):
     def __init__(self, env: Crucible):
         super().__init__(None, env, Logger(length = 255, output="./logs/torchbox.log"))
-        self.scenes = {}
+        self.scenes: Dict[str, Scene] = {}
         # build the memory environment
         self.shared = Crucible(PROTECTED, parent=env).update(globalMemory)
         self.libraries: Dict[str, Library] | None = None
@@ -119,7 +168,7 @@ class Game(TorchBox):
 
                     except Yielded as e:
                         if e.carry:
-                            user["STACK"][-1][1].update(e.carry)
+                            user["STACK"][-1][1].update({ "__CARRY__": e.carry })
                         break
                     break
 

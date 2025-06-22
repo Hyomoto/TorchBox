@@ -24,7 +24,7 @@ class BaseLibrary(Library):
         self.colors = {name.lower(): color for name, color in Ansi.__dict__.items() if isinstance(color, str)}
 
     @exportableAs("scene")
-    def changeScene(self, env: Crucible, scene: str, carry: Optional[dict] = None):
+    def changeScene(self, env: Crucible, scene: str, *carry: Any):
         """
         Change the scene for the player, setting up the local environment.
         Args:
@@ -36,10 +36,10 @@ class BaseLibrary(Library):
         while stack:
             stack.pop()
         stack.append(self.context.new_scope(scene, user))
-        raise Yielded(carry=carry)  # Yield to allow the game loop to continue
+        raise Yielded(carry=list(carry))  # Yield to allow the game loop to continue
 
-    @exportableAs("enter")
-    def enterScene(self, env: Crucible, scene: str, carry: Optional[dict] = None):
+    @exportableAs("gosub")
+    def enterScene(self, env: Crucible, scene: str, *carry: Any):
         """
         Push a new scene onto the stack, can be returned to using exit.
         Args:
@@ -49,10 +49,10 @@ class BaseLibrary(Library):
         user = env.parent # grab user scope
         stack: list = user["STACK"]
         stack.append(self.context.new_scope(scene, user))
-        raise Yielded(carry=carry)  # Yield to allow the game loop to continue
+        raise Yielded(carry=list(carry))  # Yield to allow the game loop to continue
 
-    @exportableAs("exit")
-    def exitScene(self, env: Crucible, carry: Optional[dict] = None):
+    @exportableAs("endsub")
+    def exitScene(self, env: Crucible, *carry: Any):
         """
         Pops the current scene off the stack, returning to the previous scene.  If there is no previous
         scene, it will close the user's session.
@@ -62,7 +62,7 @@ class BaseLibrary(Library):
         user = env.parent # grab user scope
         stack: list = user["STACK"]
         stack.pop()
-        raise Yielded(carry=carry)  # Yield to allow the game loop to continue
+        raise Yielded(carry=list(carry))  # Yield to allow the game loop to continue
 
     @static_eval_safe 
     @exportableAs("keys")

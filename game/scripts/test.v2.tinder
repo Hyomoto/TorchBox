@@ -1,21 +1,53 @@
 set item to "None"
-const ITEMS = [ "a", "b", "c", "d", "e" ]
+const ITEMS = { a: "A", b: "B", c: "C", d: "D", e: "E", f: "F" }
+debug("foreach test")
 foreach item in ITEMS
   set A to True
 
   if item is "a"
-    call debug("Nope!")
+    debug("Nope!")
   else if item is "b"
-    call debug("Yep!")
+    debug("Yep!")
   else
-    call debug("Yoooo!")
+    debug("Yoooo!")
   endif
 endfor
-
-set a, b to 0, 1
-call debug(a)
-call debug(b)
-
+debug("iterating over items")
 for i = 0; i < len(ITEMS); inc i
-  call debug(i from ITEMS)
+  debug(i from keys(ITEMS))
 endfor
+debug("for while test")
+for i < 10
+  debug(i)
+  break if i is 7
+  inc i
+endfor
+debug("set a from [0, 1] expect 0")
+set a from [ 0, 1 ]
+debug(a)
+debug("set a, b from [ 1, 2 ] expect 1, 2")
+set a, b from [ 1, 2 ]
+debug(a)
+debug(b)
+debug("set a, b, c from [ 0, 1 ] expect 0, 1, None")
+set a, b, c from [ 0, 1 ]
+debug(a)
+debug(b)
+debug(c)
+debug("set foo, b from {'foo': 10, 'bar': 20} expect 10, None")
+set foo, b from {"foo" : 10, "bar" : 20}
+debug(foo)
+debug(b)
+debug("set b, c expect None, None")
+set b, c
+debug(b)
+debug(c)
+debug("set f, g to 6, 9 expect 6, 9")
+set f, g to 6, 9
+debug(f)
+debug(g)
+debug("set h, i, j to 10 expect 10, 10, 10")
+set h, i, j to 10
+debug(h)
+debug(i)
+debug(j)

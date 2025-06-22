@@ -69,7 +69,6 @@ Dot chains *must* resolve stepwise to lists or dictionaries.
   * `x from [10, 20, 30]` returns the item at index `x`
   * `k from {foo: 1, bar: 2}` returns the value for key `k`
 * Use `in` to check for membership (`item in list`)
-* Use `at` to get the position or key of an item
 
 ?> There is **no** `a[0]` syntax in Tinder. Use dot notation or `from` instead.
 

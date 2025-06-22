@@ -2,10 +2,10 @@
 from text import column
   const ITEMS = { F : "ind a fight", V : "iew your stats", M : "arketplace", R : "return home", Q : "uit" }
 # start
-  call enter("tools/header", {a: PROG_NAME + " - ",b: "Town Square"})
+  gosub("tools/header", PROG_NAME + " - ", "Town Square")
   "  The streets are crowded with people, and the air is filled with the"
   "  sounds of laughter and conversation.\n"
-  call enter("tools/2column", {ITEMS})
+  gosub("tools/2column", ITEMS)
   ""
   "  `11The Town Square   `15(? for menu)"
   "  (F,M,V,Q)"
@@ -16,12 +16,12 @@ from text import column
   write "Invalid command. Please try again."
   jump get_input
 # view
-  call enter("user/status")
+  gosub("user/status")
   jump start
 # marketplace
-  call scene("marketplace/marketplace")
+  scene("marketplace/marketplace")
 # find
-  call enter("battle/start")
+  gosub("battle/start")
   jump start
 # quit
   stop

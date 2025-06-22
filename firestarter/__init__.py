@@ -320,6 +320,8 @@ class Firestarter:
                         output = getPattern(op, pattern, args, defaults) # type checking an optional injection
                     except FirestarterError as e:
                         raise FirestarterError(f"Error on line {lineNumbers.pop(0)}: {e}")
+                    except Exception as e:
+                        raise FirestarterError(f"Error on line {lineNumbers.pop(0)}: {node.slice(ast.tokens).strip()}\n{e}")
                     stack.pop()  # pop current node from stack
                     if stack:
                         if isinstance(output, list):
