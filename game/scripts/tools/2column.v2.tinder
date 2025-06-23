@@ -1,6 +1,6 @@
 from text import column
-    const KEYS = keys(ITEMS)
     set ITEMS from __CARRY__
+    const KEYS = keys(ITEMS)
     const col = { pad: "  " }
     for i = 0; i < len(KEYS); inc i 2
         set a, b to i from KEYS, i + 1 from KEYS

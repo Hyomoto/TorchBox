@@ -43,8 +43,7 @@ Binary       ~> Unary (( EqualEqual / BangEqual / LeftAngleBracketEqual / RightA
 Unary        ~> ( Bang / Minus )? Primary
 Primary      -> Constant / String / Number / Function / Identifier / Table / Array / Group
 
-Lookup       -> Identifier / Indirect
-Group        -> "(" Access ")"
+Group        -> "(" Expression ")"
 Array        <- "[" Arguments ","? "]"
 Table        <- "{" KeyValuePair ( "," KeyValuePair )* ","? "}"
 KeyValuePair <- (Identifier / String) (":" Access)?

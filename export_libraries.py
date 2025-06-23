@@ -187,7 +187,7 @@ def export_libraries(libraries: Dict[str, Library]):
             output += f"\n#### **Returns:**\n\n" + (f"*{method.return_type}*" if method.return_type else "_None_")
             output += "\n\n"
             if method.resolvable:
-                output += "?> This method can be pure.\n\n"
+                output += "?> This method can be statically resolved.\n\n"
             output += "\n\n"
         output += "\n---\n"
         markdown[library_name] = output

@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, Callable, Optional
+from typing import Any, Dict, List, Tuple, Callable, Optional
 from torchbox import TorchBox, Ember, ConnectionHandler, SocketHandler, Shutdown
 from torchbox.realm import Realm, User, RealmSaveError, RealmLoadError
 from firestarter import FirestarterError
@@ -41,7 +41,7 @@ class Scene(Tinder, PermissionHolder, Serializer):
         text = super().__repr__().replace("Tinder", "Scene")
         return text
     
-    def serialize(self) -> Dict[str, any]:
+    def serialize(self) -> Dict[str, Any]:
         def serialize(obj):
             # If already a dict (not an opcode), handle as plain data
             if isinstance(obj, dict):
@@ -66,7 +66,7 @@ class Scene(Tinder, PermissionHolder, Serializer):
         }      
 
     @classmethod
-    def deserialize(cls, data: dict) -> Dict[str, any]:
+    def deserialize(cls, data: dict) -> "Scene":
         def deserialize(data):
             if isinstance(data, dict) and "__op__" in data:
                 op_name = data["__op__"]
@@ -153,7 +153,7 @@ class Game(TorchBox):
                         if not self.libraries:
                             raise TinderBurn("No libraries loaded.")
                         lib = self.libraries.get(e.library)
-                        if lib == None:
+                        if lib is None:
                             raise TinderBurn(f"Library '{e.library}' not found.")
                         if not lib.hasPermission(script):
                             raise TinderBurn(f"Library '{e.library}' cannot be imported in this context.")
@@ -163,7 +163,7 @@ class Game(TorchBox):
                             local[e.name or e.library] = lib.export()
                         continue
                     
-                    except Halted as e:
+                    except Halted:
                         user['STACK'] = []
                         break
 

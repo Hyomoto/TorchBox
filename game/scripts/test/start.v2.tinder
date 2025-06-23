@@ -3,14 +3,21 @@ const ITEMS = { a: "A", b: "B", c: "C", d: "D", e: "E", f: "F" }
 debug("foreach test")
 foreach item in ITEMS
   set A to True
-
-  if item is "a"
+  debug(item)
+  if item is "A"
     debug("Nope!")
-  else if item is "b"
+  else if item is "B"
     debug("Yep!")
   else
     debug("Yoooo!")
   endif
+endfor
+foreach key, item in ITEMS
+  debug(str(key, item))
+endfor
+set LIST to [ 0, 1, 2 ]
+foreach value in LIST
+  debug(value)
 endfor
 debug("iterating over items")
 for i = 0; i < len(ITEMS); inc i

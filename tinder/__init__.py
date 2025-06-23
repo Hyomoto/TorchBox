@@ -103,6 +103,7 @@ from firestarter import Firestarter, SymbolReplace, Symbol as AbstractSymbol, Va
 from firestarter.grammar import make_grammar_from_file, Grammar
 from firestarter.grammar import Flags as GrammarFlags
 from functools import singledispatchmethod
+import copy
 import inspect
 import sys
 
@@ -137,7 +138,7 @@ class Yielded(FlowControl):
     """
     Used by Tinders to yield control.
     """
-    def __init__(self, carry: None):
+    def __init__(self, carry = None):
         self.carry = carry
     def __str__(self):
         return f"Yielded(carry={self.carry})"
@@ -251,6 +252,10 @@ class Constant(Value):
             self.value = False
         else:
             self.value = value
+    def transmute(self, env: Crucible):
+        if isinstance(self.value, object):
+            return copy.deepcopy(self.value)
+        return self.value
     @property
     def type(self):
         return type(self.value)
@@ -913,12 +918,12 @@ class Foreach(Statement):
         super().__init__(None, Condition(Equal(Identifier("__INDEX__"), Identifier("__LENGTH__"))))
         output = [
             Set(Identifier("__ITER__"), Assign(), iterable),
-            Set(Identifier("__INDEX__"), Assign(),Number("0")),
+            Set(Identifier("__INDEX__"), Assign(), Number("0")),
             Set(Identifier("__LENGTH__"), Assign(), Function(Identifier("len"), iterable)),
             self,
         ]
         if len(values) == 1:
-            output.append(Set(values[0], Assign(), ValueFrom(Identifier("__INDEX__"), identifier[1])))
+            output.append(Set(values[0], Assign(), ValueFrom(ValueFrom(Identifier("__INDEX__"), Identifier("__ITER__")),identifier[1])))
         else:
             output.append(Set(values[0], Assign(), ValueFrom(Identifier("__INDEX__"), Identifier("__ITER__"))))
             output.append(Set(values[1], Assign(), ValueFrom(values[0], identifier[2])))
