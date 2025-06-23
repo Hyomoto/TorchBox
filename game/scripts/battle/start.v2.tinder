@@ -24,9 +24,11 @@ import random
         jump end
       else if action is "fight"
         "You chose to fight the goblin!"
+        set TARGET, HP to "The goblin", "EHP"
         jump do_fight
       else if action is "enemy"
         "The goblin attacks you!"
+        set TARGET, HP to "You", "PHP"
         jump do_fight
       endif
   endfor
@@ -41,8 +43,11 @@ import random
   "You have been defeated by the goblin!"
   jump end
 # end
-  call endsub()
+  endsub()
 
 # do_fight
   "Fight begins!"
+  set DAMAGE to random.randint(1, 5)
+  "[[TARGET]] takes [[DAMAGE]] damage!"
+  dec @HP DAMAGE
   return

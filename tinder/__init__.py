@@ -581,8 +581,6 @@ class Access(AbstractSymbol):
                 raise SymbolReplace(ValueIn(left, right))
             case FromSymbol():
                 raise SymbolReplace(ValueFrom(left, right))
-            case At():
-                raise SymbolReplace(ValueAt(left, right))
             case _:
                 raise TinderBurn(f"Unknown access operator: {symbol}")
 
@@ -760,6 +758,8 @@ class Set(Keyword):
         else:
             values = self.pairs[-1].transmute(env)
             keys = self.pairs[:-1]
+            if isinstance(self.pairs[-1], Function):
+                values = env.get("__CARRY__")
             if isinstance(values, dict):
                 for key in keys:
                     if key not in values:

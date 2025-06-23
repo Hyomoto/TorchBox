@@ -14,6 +14,7 @@ from .memory.protected import map as protectedMemory
 from .memory.globals import map as globalMemory
 from .memory.user import map as userMemory, classes as user_classes
 from .libraries import import_libraries, BaseLibrary
+from testing import Profiler
 from pathlib import Path
 from constants import Ansi
 import threading
@@ -193,6 +194,7 @@ class Game(TorchBox):
                         
                         depth = len(stack) - 1
                         script, local = stack[-1]
+                        size = len(stack)
                         scene: Scene = self.get(script) # type: ignore
                         local.parent = user
                         self.env = local
@@ -213,9 +215,10 @@ class Game(TorchBox):
                             input = self.substitute(user["INPUT"].replace("\\n", "\n"))
                             
                             # check if scene changed, if so continue
-                            if stack and stack[-1][0] != script:
+                            if stack and (stack[-1][0] != script or len(stack) != size):
                                 user["OUTPUT"] = output
                                 user["INPUT"] = input
+                                size = len(stack)
                                 continue
                             
                             user["OUTPUT"] = ""

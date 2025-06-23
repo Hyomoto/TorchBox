@@ -28,13 +28,14 @@ class LocalUser(SocketUser):
         return "<LocalUser>"
 
 def test_compile(run = True):
-    path = "test.v2.tinder"
+    from testing import Profiler
+    path = "test"
     torchbox: Game = instantiate_game(path, debug = True)
-    print( torchbox.scenes["test"])
+    print( torchbox.scenes["test/start"])
     if not run:
         return exit()
     player = LocalUser(None, torchbox.queue, torchbox.log)
-    player.environment["STACK"] = [("test",None)]
+    player.environment["STACK"] = [("test/start",None)]
     player.login()
     torchbox.run()
     exit()
