@@ -27,6 +27,12 @@ class LocalUser(SocketUser):
     def __repr__(self):
         return "<LocalUser>"
 
+def export_libraries():
+    from game.libraries import import_libraries
+    from export_libraries import export_libraries
+    libraries = import_libraries({})
+    export_libraries(libraries)
+
 def test_compile(run = True):
     from testing import Profiler
     path = "test"
@@ -61,4 +67,4 @@ def main():
     print(RESET)
 
 if __name__ == "__main__":
-    test_compile()
+    export_libraries()

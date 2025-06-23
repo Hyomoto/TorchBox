@@ -1,52 +1,98 @@
-# API: login
+# Library: login
 ---
 
 **Requires Permissions:**[`login`]
 
-API for user login and management, including finding users, checking passwords, setting passwords,
-and creating new users.  This API requires the 'login' permission to be used.
-
+    Library for user login and management, including finding users, checking passwords, setting passwords,
+    and creating new users.  This Library requires the 'login' permission to be used.
+    
 ## `check_password(user, password)`
-Check if the provided password matches the user's password.
 
-**Parameters:**
-- `user`: *User*
-- `password`: *str*
+> Check if the provided password matches the user's password.
 
-**Returns:** *- bool: True if the password matches, otherwise False.*
+
+#### **Parameters:**
+
+| Name | Type | Default |
+| ---- | ---- | ------- |
+| user | `User` |  |
+| password | `str` |  |
+
+#### **Returns:**
+
+*- bool: True if the password matches, otherwise False.*
+
+
+
+## `delete_user(user)`
+
+> Delete the specified user.
+
+
+#### **Parameters:**
+
+| Name | Type | Default |
+| ---- | ---- | ------- |
+| user | `User` |  |
+
+#### **Returns:**
+
+_None_
+
+
 
 ## `find_user(username)`
-Find a user by username.
 
-**Parameters:**
-- `username`: *str*
+> Find a user by username.
 
-**Returns:** *- User: The user object if found, otherwise None.*
+
+#### **Parameters:**
+
+| Name | Type | Default |
+| ---- | ---- | ------- |
+| username | `str` |  |
+
+#### **Returns:**
+
+*- User: The user object if found, otherwise None.*
+
+
 
 ## `new_user(username, password)`
-Create a new user with the given username and password.
 
-**Parameters:**
-- `username`: *str*
-- `password`: *str*
+> Create a new user with the given username and password.
 
-**Returns:** *- User: The newly created user object.*
 
-## `set_nickname(user, nickname)`
-Set the user's nickname.
+#### **Parameters:**
 
-**Parameters:**
-- `user`: *User*
-- `nickname`: *str*
+| Name | Type | Default |
+| ---- | ---- | ------- |
+| username | `str` |  |
+| password | `str` |  |
 
-**Returns:** _None_
+#### **Returns:**
+
+*- User: The newly created user object.*
+
+
+
 ## `set_password(user, password)`
-Set the user's password.
 
-**Parameters:**
-- `user`: *User*
-- `password`: *str*
+> Set the user's password.
 
-**Returns:** _None_
+
+#### **Parameters:**
+
+| Name | Type | Default |
+| ---- | ---- | ------- |
+| user | `User` |  |
+| password | `str` |  |
+
+#### **Returns:**
+
+_None_
+
+
+
 
 ---

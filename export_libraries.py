@@ -2,6 +2,8 @@ from typing import List, Dict, Optional, Any
 from tinder.library import Library, import_libraries
 import re
 
+PATH = "./docs/libraries/"
+
 class LibraryDoc:
     """Class to represent Library documentation."""
     def __init__(self, name: str, description: str, methods: List['MethodDoc'], permissions: Optional[List[str]] = None):
@@ -192,21 +194,16 @@ def export_libraries(libraries: Dict[str, Library]):
 
     # generate pages
     for name, doc in markdown.items():
-        with open(f"./docs/{name}.md", "w", encoding="utf-8") as f:
+        with open(f"{PATH}{name}.md", "w", encoding="utf-8") as f:
             f.write(doc)
-        print(f"Library documentation generated in ./docs/libraries/{name}.md")
+        print(f"Library {name} generated at {PATH}{name}.md")
 
     # generate sidebar
-    with open("./docs/_sidebar.md", "w", encoding="utf-8") as f:
-        f.write(
-            '<center>\n\t<a href="/" style="text-decoration: none; color: inherit;">\n\t\t<div>\n'
-            '\t\t\t<img src="tinder.svg" alt="drawing" width="32" />\n'
-            '\t\t</div><font size="4">Tinder</font>\n\t</a>\n</center>\n'
-            '\n'
-            '- [Home](language.md)\n'
-        )
+    with open(f"{PATH}_sidebar.md", "w", encoding="utf-8") as f:
+        f.write('<div><a href="./" style="text-decoration: none; color: inherit;">\n<center><img src="sas.svg" alt="drawing" width="128" />\n</a></div>\n\n---\n\n- [Libraries](libraries/home.md)\n')
         for name in markdown.keys():
-            f.write(f"- [{name}]({name}.md)\n")
+            f.write(f"- [{name}](libraries/{name}.md)\n")
+    print(f"Sidebar generated at {PATH}_sidebar.md")
 
 if __name__ == "__main__":
     from game.libraries import import_libraries
