@@ -469,7 +469,7 @@ class GrammarParseError(GrammarError):
             else:
                 expect = rule.__class__.__name__
             return expect
-        lastMatch, lastError = find_best_error(self.matches, self.error)
+        lastMatch, lastError = find_best_error(self.error.matched, self.error)
         unexpected = False
         matched = matched_string(lastError) if lastError else None
         expect = None
@@ -482,7 +482,7 @@ class GrammarParseError(GrammarError):
         if expected:
             if isinstance(expected, RuleNotPredicate):
                 unexpected = True # got something we shouldn't have
-            expect = get_identity(lastError.parent.expected if lastError.parent else lastError.expected)
+            expect = get_identity(lastError.expected)
             identity = lastError.expected.identity or lastError.expected.__class__.__name__
             header = f"Error at line {row}, column {column} in {identity!r}:"
         else:
@@ -662,6 +662,7 @@ class Grammar:
                 pos = match.end
         except MatchError as e:
             raise GrammarParseError(self, matches, e, tokens)
+        lineNumbers = []
         if self.flags & Flags.FLATTEN:
             flattened = []
             for match in matches:
@@ -671,7 +672,6 @@ class Grammar:
                 else:
                     flattened.append(flat)
             matches = flattened
-            lineNumbers = []
             for line in matches:
                 line, _ = getLineInfo(tokens, line.start)
                 lineNumbers.append(line)

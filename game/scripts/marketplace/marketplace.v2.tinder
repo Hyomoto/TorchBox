@@ -1,5 +1,0 @@
-# start
-  "Welcome to the Marketplace! Here you can buy and sell items with other players."
-  input "<MORE>"
-# exit
-  call scene("home/start")

@@ -1,0 +1,48 @@
+Namespace  <- "<<" "namespace" Identifier (Container)* ">>"
+Identifier <> ~"[a-zA-Z][a-zA-Z0-9_-]*"
+Container  -> "<<" ( Flag / Object / Syntax / Synonym / Function ) ">>"
+
+Flag       <- "flag" Identifier ( Identifier )*
+
+Syntax     <- "syntax" ( OBJECT / Identifier  )* "=" Identifier
+OBJECT     <- "OBJECT" ( "(" Identifier ( Identifier )* ")" )?
+
+Synonym    <- "synonym" Identifier ( Identifier )*
+
+Function   <- "function" FUNCTION
+FUNCTION   -> Identifier "(" Arguments ")" Statement*
+Arguments  <- ( Identifier ( Identifier)* )?
+Argument   <- Identifier Op? Value?
+Statement  -> Condition / Call
+Condition  <- Binary Block
+Block      -> "{" Statement* "}"
+Binary     ~> Unary (( And / Or / Plus / Minus / Mul / Div / Gt / Ge / Lt / Le / Eq / Ne ) Unary)*
+Unary      ~> ( Bang / Minus )? Primary
+Primary    -> Call / Value / Group
+Group      -> "(" Binary ")"
+Call       <- Identifier "(" ( Binary ("," Binary)* )? ","? ")"
+
+Object     <- "object" Identifier Import? ( Property / Action )*
+Import     <- "<-" Identifier
+Action     <- "<<" "action" Identifier ( Statement )* ">>"
+Property   <- Identifier ( Value / "<" ( Value )* ">" )
+Value      -> Identifier / String / Number / Boolean / Nil
+String     <> ~'"(?:[^"\\]|\\.)*"' / ~"'(?:[^'\\]|\\.)*'"
+Number     <> ~"-?[0-9]+(\\.[0-9]+)?"
+Boolean    <> "True" / "False"
+Nil        <- "Nil"
+
+Bang       <- "!"
+Plus       <- "+"
+Minus      <- "-"
+Mul        <- "*"
+Div        <- "/"
+Gt         <- ">"
+Ge         <- ">="
+Lt         <- "<"
+Le         <- "<="
+Eq         <- "is" / "=="
+Ne         <- "is not" / "!="
+Op         <- "?"
+And        <- "and"
+Or         <- "or"

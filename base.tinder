@@ -1,0 +1,58 @@
+<<namespace globals
+  <<object ROOMS>>
+  
+  <<object OBJECT
+    LOC Nil
+    DESC "object"
+    FLAG Nil
+  >>
+
+  <<flag place>>
+  <<object PLACE <- OBJECT
+    LOC ROOMS
+    DESC "place"
+    FLAG place
+  >>
+
+  <<function F-BAR ()
+  >>
+  <<function F-GO (object)
+    object is NONE {
+      tell("You have to specify where to go.")
+    }
+    object is HERE {
+      tell("You are already here.")
+    }
+    move( PLAYER, object )
+  >>
+
+  <<syntax GO OBJECT (place) = F-GO>>
+  <<syntax GO TO OBJECT (place) = F-GO>>
+  <<synonym GO WALK ENTER>>
+
+>>
+
+<<namespace base
+  <<object MAIN-ROOM <- PLACE
+    DESC "main room"
+    <<action LOOK
+      tell("You are in the main room. There are doors to the north and east.")
+    >>
+    <<action GO
+      OBJECT is NORTH {
+        move( PLAYER, NORTH-ROOM )
+      }
+    >>
+  >>
+  <<object NORTH-ROOM <- PLACE
+    DESC "north room"
+    <<action LOOK
+      tell("You are in the north room. There is a door to the south leading back to the main room.")
+    >>
+    <<action GO
+      OBJECT and SOUTH {
+        move( PLAYER, MAIN-ROOM )
+      }
+    >>
+  >>
+>>

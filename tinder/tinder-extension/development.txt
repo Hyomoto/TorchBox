@@ -1,3 +1,0 @@
-code --extensionDevelopmentPath=C:\Users\drago\Desktop\Projects\Python\TorchBox\tinder\tinder-extension 
-
-npx vsce package
